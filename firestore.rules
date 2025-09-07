@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Catálogo visible públicamente (solo lectura)
+    match /services/{serviceId} {
+      allow read: if true;
+      allow write: if false; // Solo por Admin SDK (Functions)
+    }
+
+    // Órdenes: no se exponen directamente en MVP (lee y escribe el backend)
+    match /orders/{orderId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
+    // Flags globales (solo backend)
+    match /flags/{flagId} {
+      allow read: if false;
+      allow write: if false;
+    }
+  }
+}

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Retornando del pago (mock)</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;padding:32px;background:#f7f7f7}
+    .card{background:#fff;border-radius:14px;padding:16px;max-width:680px;margin:0 auto;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+    .muted{color:#64748b}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h3>Procesando tu pago…</h3>
+    <div id="msg" class="muted">Por favor espera…</div>
+  </div>
+
+<script>
+(async () => {
+  const params = new URLSearchParams(location.search);
+  const orderId = params.get('orderId');
+  const scenario = params.get('scenario') || 'success';
+  const fnBase = "http://127.0.0.1:5001/apptramiteya/us-central1";
+
+  const $msg = document.getElementById('msg');
+
+  if (!orderId) {
+    $msg.textContent = "Falta orderId en la URL.";
+    return;
+  }
+  try {
+    const res = await fetch(`${fnBase}/payments_confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ orderId, scenario })
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
+
+    // listo -> volvemos al home con ?orderId=...
+    window.location.href = `/?orderId=${encodeURIComponent(orderId)}`;
+  } catch (err) {
+    console.error(err);
+    $msg.textContent = `Error confirmando el pago: ${err}`;
+  }
+})();
+</script>
+</body>
+</html>

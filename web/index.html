@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TrámiteYA – MVP</title>
+  <style>
+    :root{
+      --bg:#f6f7fb;
+      --card:#ffffff;
+      --text:#0f172a;
+      --muted:#64748b;
+      --primary:#0ea5e9;
+      --primary-600:#0284c7;
+      --ok:#16a34a;
+      --warn:#f59e0b;
+      --err:#ef4444;
+      --soft:#e2e8f0;
+      --soft-2:#f1f5f9;
+      --radius:14px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;color:var(--text)}
+    header{background:#0f172a;color:#fff;padding:16px 20px;display:flex;align-items:center;gap:12px;justify-content:space-between}
+    header .brand{font-weight:800}
+    header .actions{display:flex;gap:8px}
+    main{max-width:980px;margin:22px auto;padding:0 16px}
+
+    .card{background:var(--card);border-radius:var(--radius);box-shadow:0 1px 2px rgba(0,0,0,.06);padding:16px}
+    .row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+    .title{font-size:18px;font-weight:800;margin:0 0 6px}
+    .muted{color:var(--muted);font-size:13px}
+    .hr{height:1px;background:var(--soft);margin:12px 0}
+    .hidden{display:none !important}
+
+    .btn{background:var(--primary);color:#fff;border:0;border-radius:12px;padding:10px 14px;cursor:pointer;font-weight:600}
+    .btn:hover{background:var(--primary-600)}
+    .btn.secondary{background:var(--soft);color:#0f172a}
+    .btn.danger{background:var(--err)}
+    .btn.ghost{background:transparent;border:1px solid var(--soft);color:var(--text)}
+    .price{font-weight:800}
+
+    .pill{padding:8px 10px;border-radius:12px;background:var(--soft-2);border:1px solid var(--soft)}
+    .pill.ok{background:#ecfdf5;border-color:#a7f3d0}
+    .pill.warn{background:#fffbeb;border-color:#fde68a}
+    .pill.err{background:#fef2f2;border-color:#fecaca}
+
+    input,select{width:100%;padding:10px;border:1px solid var(--soft);border-radius:10px}
+    label{display:block;margin:8px 0 6px;font-size:14px;color:#334155}
+
+    /* Simulador de pago (aspecto de pasarela externa) */
+    .paybox{border:1px dashed var(--soft);background:#fff;border-radius:12px;padding:14px}
+    .payrow{display:flex;flex-wrap:wrap;gap:10px}
+    .payrow .btn{flex:1 1 220px}
+
+    /* Historial */
+    .history-list{display:grid;grid-template-columns:1fr;gap:10px}
+    .h-item{border:1px solid var(--soft);border-radius:10px;padding:10px;background:#fff}
+    .h-head{display:flex;justify-content:space-between;gap:8px}
+    .h-foot{display:flex;justify-content:space-between;gap:8px;margin-top:6px}
+
+    /* Estado */
+    #status-json pre{background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px;white-space:pre-wrap;margin:8px 0 0}
+
+    /* Oculta el pill del header cuando estás en el formulario */
+body.on-form #header-cta { display:none; }
+
+/* Transición suave para la paybox si quisieras colapsarla/expandirla */
+.paybox { transition: max-height .3s ease, opacity .2s ease; overflow: hidden; }
+.paybox.open { max-height: 1200px; opacity: 1; }
+#pay-sim { display: block !important; }
+#pay-sim.hidden { display: none !important; }
+.paybox { max-height: none !important; opacity: 1 !important; }
+  </style>
+  <style>
+  /* Oculta acciones del header cuando estás en el formulario */
+  body.on-form #btn-reload,
+  body.on-form #btn-history {
+    display: none;
+  }
+</style>
+<style>
+  /* Sólo ocultamos Recargar cuando estás en el formulario */
+  body.on-form #btn-reload { display: none; }
+
+  /* Asegura que Mis solicitudes SIEMPRE se vea */
+  #btn-history { display: inline-flex !important; }
+</style>
+
+
+</head>
+<body>
+<header>
+  <div class="brand">TrámiteYA (Emulador)</div>
+  <div class="actions">
+    <button id="btn-reload" class="btn secondary">Recargar catálogo</button>
+    <button id="btn-history" class="btn secondary">Mis solicitudes</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- LISTA -->
+  <section id="screen-list" class="card">
+    <div class="row">
+      <div class="title">Catálogo de trámites</div>
+    </div>
+    <div id="services" class="grid"></div>
+    <div id="empty" class="muted hidden">No hay trámites disponibles.</div>
+
+    <div class="hr"></div>
+
+    <div id="history" class="">
+      <div class="row">
+        <div class="title">Mis solicitudes (en este dispositivo)</div>
+        <button id="btn-clear-history" class="btn ghost">Limpiar historial</button>
+      </div>
+      <div id="history-list" class="history-list muted"></div>
+    </div>
+  </section>
+
+  <!-- FORM -->
+  <section id="screen-form" class="card hidden">
+    <button id="btn-back" class="btn secondary">← Volver</button>
+    <div class="hr"></div>
+
+    <div id="svc-head" class="row">
+      <div class="title">Trámite</div>
+    </div>
+
+    <!-- Desglose de precio -->
+    <div id="price-box" class="pill">
+      <div><strong>Desglose</strong></div>
+      <div id="price-breakdown" class="muted"></div>
+    </div>
+
+    <div class="hr"></div>
+
+    <form id="form"></form>
+
+    <div class="row">
+      <div class="muted" id="svc-price">Total: —</div>
+      <button id="btn-create" class="btn">Crear orden</button>
+    </div>
+
+    <div id="pay-sim" class="hidden">
+      <div class="hr"></div>
+      <div class="paybox card">
+        <!-- Simulador de pago (solo emulador) -->
+        <details id="simulator">
+          <summary style="font-weight:700; cursor:pointer;">🧪 Simulador de pago (sólo emulador)</summary>
+          <div class="muted" style="margin:8px 0;">
+            Estás saliendo de TrámiteYA, simulando Wompi. Selecciona un resultado:
+          </div>
+          <div class="row" style="gap:12px; flex-wrap:wrap;">
+            <button class="btn" data-sim="success" style="background:#16a34a">✅ Pago exitoso</button>
+            <button class="btn" data-sim="insufficient" style="background:#f59e0b">⚠️ Saldo insuficiente</button>
+            <button class="btn" data-sim="canceled" style="background:#475569">❌ Cancelado por usuario</button>
+            <button class="btn" data-sim="error" style="background:#dc2626">❌ Error técnico</button>
+          </div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ESTADO -->
+  <section id="screen-status" class="card hidden">
+    <div class="title">Estado de la orden</div>
+
+    <div class="pill" id="msg-payment"><strong>Estado del pago</strong><div class="muted" id="status-payment">—</div></div>
+    <div style="height:8px"></div>
+    <div class="pill" id="msg-delivery"><strong>Entrega</strong><div class="muted" id="status-delivery">—</div></div>
+
+    <div id="status-json" class="muted"></div>
+
+    <div class="hr"></div>
+    <div class="row">
+      <button id="btn-retry" class="btn secondary">Volver al catálogo</button>
+    </div>
+  </section>
+
+</main>
+
+<script src="./main.js"></script>
+</body>
+</html>
+</html>
