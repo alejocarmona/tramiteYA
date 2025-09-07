@@ -5,90 +5,216 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>TrámiteYA – MVP</title>
   <style>
-    :root{
-      --bg:#f6f7fb;
-      --card:#ffffff;
-      --text:#0f172a;
-      --muted:#64748b;
-      --primary:#0ea5e9;
-      --primary-600:#0284c7;
-      --ok:#16a34a;
-      --warn:#f59e0b;
-      --err:#ef4444;
-      --soft:#e2e8f0;
-      --soft-2:#f1f5f9;
-      --radius:14px;
+    :root {
+      --bg: #F7F7F7;
+      --surface: #FFFFFF;
+      --ink: #0F172A;
+      --muted: #64748B;
+      --primary: #0EA5E9;
+      --success: #16A34A;
+      --danger: #DC2626;
+      --radius: 14px;
+      --shadow: 0 1px 2px rgba(0,0,0,.08);
+      --tap: 44px;
+      --gap: 12px;
     }
-    *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;color:var(--text)}
-    header{background:#0f172a;color:#fff;padding:16px 20px;display:flex;align-items:center;gap:12px;justify-content:space-between}
-    header .brand{font-weight:800}
-    header .actions{display:flex;gap:8px}
-    main{max-width:980px;margin:22px auto;padding:0 16px}
-
-    .card{background:var(--card);border-radius:var(--radius);box-shadow:0 1px 2px rgba(0,0,0,.06);padding:16px}
-    .row{display:flex;align-items:center;justify-content:space-between;gap:12px}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
-    .title{font-size:18px;font-weight:800;margin:0 0 6px}
-    .muted{color:var(--muted);font-size:13px}
-    .hr{height:1px;background:var(--soft);margin:12px 0}
-    .hidden{display:none !important}
-
-    .btn{background:var(--primary);color:#fff;border:0;border-radius:12px;padding:10px 14px;cursor:pointer;font-weight:600}
-    .btn:hover{background:var(--primary-600)}
-    .btn.secondary{background:var(--soft);color:#0f172a}
-    .btn.danger{background:var(--err)}
-    .btn.ghost{background:transparent;border:1px solid var(--soft);color:var(--text)}
-    .price{font-weight:800}
-
-    .pill{padding:8px 10px;border-radius:12px;background:var(--soft-2);border:1px solid var(--soft)}
-    .pill.ok{background:#ecfdf5;border-color:#a7f3d0}
-    .pill.warn{background:#fffbeb;border-color:#fde68a}
-    .pill.err{background:#fef2f2;border-color:#fecaca}
-
-    input,select{width:100%;padding:10px;border:1px solid var(--soft);border-radius:10px}
-    label{display:block;margin:8px 0 6px;font-size:14px;color:#334155}
-
-    /* Simulador de pago (aspecto de pasarela externa) */
-    .paybox{border:1px dashed var(--soft);background:#fff;border-radius:12px;padding:14px}
-    .payrow{display:flex;flex-wrap:wrap;gap:10px}
-    .payrow .btn{flex:1 1 220px}
-
-    /* Historial */
-    .history-list{display:grid;grid-template-columns:1fr;gap:10px}
-    .h-item{border:1px solid var(--soft);border-radius:10px;padding:10px;background:#fff}
-    .h-head{display:flex;justify-content:space-between;gap:8px}
-    .h-foot{display:flex;justify-content:space-between;gap:8px;margin-top:6px}
-
-    /* Estado */
-    #status-json pre{background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px;white-space:pre-wrap;margin:8px 0 0}
-
-    /* Oculta el pill del header cuando estás en el formulario */
-body.on-form #header-cta { display:none; }
-
-/* Transición suave para la paybox si quisieras colapsarla/expandirla */
-.paybox { transition: max-height .3s ease, opacity .2s ease; overflow: hidden; }
-.paybox.open { max-height: 1200px; opacity: 1; }
-#pay-sim { display: block !important; }
-#pay-sim.hidden { display: none !important; }
-.paybox { max-height: none !important; opacity: 1 !important; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      font-size: 16px;
+      line-height: 1.4;
+      background: var(--bg);
+      color: var(--ink);
+      margin: 0;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--ink);
+      color: #fff;
+      padding: 12px 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header .brand {
+      font-weight: 800;
+      font-size: 18px;
+      letter-spacing: 0.5px;
+    }
+    header .actions {
+      display: flex;
+      gap: 8px;
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 12px 16px 24px;
+    }
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--gap);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px,1fr));
+      gap: var(--gap);
+    }
+    .page-title {
+      font-size: 24px;
+      font-weight: 800;
+      margin: 0 0 12px;
+      color: #0f172a;
+    }
+    .title {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0 0 6px;
+    }
+    .muted {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .btn {
+      background: var(--primary);
+      color: #fff;
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      min-height: var(--tap);
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s;
+      font-size: 15px;
+      box-sizing: border-box;
+      outline: none;
+    }
+    .btn:hover {
+      background: #0284c7;
+    }
+    .btn.secondary {
+      background: #E2E8F0;
+      color: var(--ink);
+    }
+    .btn.ghost {
+      background: transparent;
+      color: var(--primary);
+      border: 1px solid var(--primary);
+    }
+    .btn:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+    }
+    input, select {
+      width: 100%;
+      min-height: var(--tap);
+      border: 1px solid #CBD5E1;
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 15px;
+      margin-bottom: 8px;
+      box-sizing: border-box;
+    }
+    label {
+      display: block;
+      margin: 8px 0 6px;
+      font-size: 14px;
+      color: #334155;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 13px;
+      background: #F1F5F9;
+      color: var(--ink);
+      border: none;
+    }
+    .pill.success {
+      background: #E6F9ED;
+      color: var(--success);
+    }
+    .pill.warn {
+      background: #FEF3C7;
+      color: #92400E;
+    }
+    .pill.error {
+      background: #FEE2E2;
+      color: var(--danger);
+    }
+    .hr {
+      height: 1px;
+      background: #e2e8f0;
+      margin: 12px 0 16px;
+    }
+    .hidden {
+      display: none !important;
+    }
+    .price {
+      font-weight: 700;
+      font-size: 16px;
+      color: var(--primary);
+    }
+    .history-list {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .h-item {
+      border: 1px solid #E2E8F0;
+      border-radius: 10px;
+      padding: 10px;
+      background: var(--surface);
+      margin-bottom: 4px;
+    }
+    .h-head, .h-foot {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .h-foot {
+      margin-top: 6px;
+    }
+    #status-json pre {
+      background: #FAFAFA;
+      border: 1px solid #EEE;
+      border-radius: 8px;
+      font-size: 13px;
+      padding: 8px;
+      overflow: auto;
+      margin: 8px 0 0;
+    }
+    #pay-sim { display: block !important; }
+    #pay-sim.hidden { display: none !important; }
+    .paybox { max-height: none !important; opacity: 1 !important; }
+    @media (max-width: 600px) {
+      main { padding: 8px 4px 16px; }
+      .card { padding: 12px; }
+      .btn { padding: 10px 8px; font-size: 14px; }
+      .title { font-size: 16px; }
+      header { padding: 10px 8px; }
+    }
   </style>
   <style>
-  /* Oculta acciones del header cuando estás en el formulario */
-  body.on-form #btn-reload,
-  body.on-form #btn-history {
-    display: none;
-  }
-</style>
-<style>
-  /* Sólo ocultamos Recargar cuando estás en el formulario */
-  body.on-form #btn-reload { display: none; }
-
-  /* Asegura que Mis solicitudes SIEMPRE se vea */
-  #btn-history { display: inline-flex !important; }
-</style>
-
-
+    body.on-form #btn-reload,
+    body.on-form #btn-history {
+      display: none;
+    }
+    body.on-form #btn-reload { display: none; }
+    #btn-history { display: inline-flex !important; }
+  </style>
 </head>
 <body>
 <header>
@@ -103,15 +229,14 @@ body.on-form #header-cta { display:none; }
 
   <!-- LISTA -->
   <section id="screen-list" class="card">
-    <div class="row">
-      <div class="title">Catálogo de trámites</div>
-    </div>
+    <h1 class="page-title">Catálogo de trámites</h1>
+    <div class="hr"></div>
     <div id="services" class="grid"></div>
     <div id="empty" class="muted hidden">No hay trámites disponibles.</div>
-
     <div class="hr"></div>
-
     <div id="history" class="">
+      <h1 class="page-title">Mis solicitudes (en este dispositivo)</h1>
+      <div class="hr"></div>
       <div class="row">
         <div class="title">Mis solicitudes (en este dispositivo)</div>
         <button id="btn-clear-history" class="btn ghost">Limpiar historial</button>
@@ -184,5 +309,4 @@ body.on-form #header-cta { display:none; }
 
 <script src="./main.js"></script>
 </body>
-</html>
 </html>

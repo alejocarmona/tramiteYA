@@ -4,7 +4,32 @@ console.info(`TYA main.js – build ${new Date().toLocaleString()}`);
 // Config
 // =====================
 function functionUrl(name) {
-  const base = "http://127.0.0.1:5001/apptramiteya/us-central1";
+  const qp = new URLSearchParams(location.search);
+  const ENV = qp.get('env');
+
+  // Override por window.__API_BASE
+  if (window.__API_BASE) {
+    console.info('API base (override):', window.__API_BASE);
+    return `${window.__API_BASE}/${name}`;
+  }
+
+  let base;
+  if (ENV === 'emulator') {
+    base = `http://${location.hostname}:5001/apptramiteya/us-central1`;
+  } else if (ENV === 'prod') {
+    base = 'https://us-central1-apptramiteya.cloudfunctions.net';
+  } else {
+    if (
+      location.hostname === 'localhost' ||
+      location.hostname === '127.0.0.1' ||
+      location.port === '5000'
+    ) {
+      base = `http://${location.hostname}:5001/apptramiteya/us-central1`;
+    } else {
+      base = 'https://us-central1-apptramiteya.cloudfunctions.net';
+    }
+  }
+  console.info('API base:', base);
   return `${base}/${name}`;
 }
 
@@ -355,7 +380,21 @@ async function createOrder() {
     });
     console.log('[createOrder] /payments_init OK');
 
-    // 3) Mostrar simulador y mantener bloqueo hasta que el usuario elija resultado
+    // Manejo explícito para modo normal (no DEBUG)
+    if (!DEBUG) {
+      // No mostramos simulador en modo normal: vamos directo al estado y desbloqueamos UI
+      const status = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
+      renderStatus(status);
+      // desbloqueo de UI
+      disableFormInputs(false);
+      lockHeader(false);
+      lockNavigation(false);
+      setBtnLoading(S.btnCreate, false, "", "Crear orden");
+      show(S.status);
+      return; // salimos de createOrder aquí
+    }
+
+    // 3) Mostrar simulador y mantener bloqueo hasta que el usuario elija resultado (solo DEBUG)
     console.log('[createOrder] DEBUG=', DEBUG);
     console.log('[createOrder] paySim exists?', !!S.paySim, S.paySim);
     if (S.paySim) console.log('[createOrder] paySim classList BEFORE:', S.paySim.className);
