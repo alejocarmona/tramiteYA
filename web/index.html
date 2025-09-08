@@ -70,17 +70,13 @@
       grid-template-columns: repeat(auto-fit, minmax(260px,1fr));
       gap: var(--gap);
     }
-    .page-title {
-      font-size: 24px;
-      font-weight: 800;
-      margin: 0 0 12px;
-      color: #0f172a;
-    }
+    .page-title { font-size:24px; font-weight:800; margin:0 0 12px; }
     .title {
       font-size: 18px;
       font-weight: 700;
       margin: 0 0 6px;
     }
+    .big { font-size:16px; font-weight:700; color:#0f172a; }
     .muted {
       color: var(--muted);
       font-size: 13px;
@@ -131,29 +127,10 @@
       font-size: 14px;
       color: #334155;
     }
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 10px;
-      border-radius: 999px;
-      font-size: 13px;
-      background: #F1F5F9;
-      color: var(--ink);
-      border: none;
-    }
-    .pill.success {
-      background: #E6F9ED;
-      color: var(--success);
-    }
-    .pill.warn {
-      background: #FEF3C7;
-      color: #92400E;
-    }
-    .pill.error {
-      background: #FEE2E2;
-      color: var(--danger);
-    }
+    .pill { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; font-size:13px; }
+    .pill.success { background:#E6F9ED; color:#16A34A; }
+    .pill.warn { background:#FEF3C7; color:#92400E; }
+    .pill.error { background:#FEE2E2; color:#DC2626; }
     .hr {
       height: 1px;
       background: #e2e8f0;
@@ -238,7 +215,8 @@
       <h1 class="page-title">Mis solicitudes (en este dispositivo)</h1>
       <div class="hr"></div>
       <div class="row">
-        <div class="title">Mis solicitudes (en este dispositivo)</div>
+        <div class="muted">Solo visibles en este teléfono</div>
+        <div class="spacer"></div>
         <button id="btn-clear-history" class="btn ghost">Limpiar historial</button>
       </div>
       <div id="history-list" class="history-list muted"></div>
@@ -291,17 +269,59 @@
 
   <!-- ESTADO -->
   <section id="screen-status" class="card hidden">
-    <div class="title">Estado de la orden</div>
-
-    <div class="pill" id="msg-payment"><strong>Estado del pago</strong><div class="muted" id="status-payment">—</div></div>
-    <div style="height:8px"></div>
-    <div class="pill" id="msg-delivery"><strong>Entrega</strong><div class="muted" id="status-delivery">—</div></div>
-
-    <div id="status-json" class="muted"></div>
-
+    <div class="title page-title">Estado de tu solicitud</div>
     <div class="hr"></div>
-    <div class="row">
-      <button id="btn-retry" class="btn secondary">Volver al catálogo</button>
+
+    <div class="card trust">
+      <div class="row">
+        <div id="badge-status" class="pill">—</div>
+        <div class="spacer"></div>
+        <div class="muted" id="order-date">—</div>
+      </div>
+      <div class="summary">
+        <div class="row">
+          <div>
+            <div class="muted">N° de orden</div>
+            <div class="big" id="order-id">—</div>
+          </div>
+          <div>
+            <div class="muted">Trámite</div>
+            <div class="big" id="order-service">—</div>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <div class="muted">Pago</div>
+            <div id="status-payment" class="big">—</div>
+          </div>
+          <div>
+            <div class="muted">Entrega</div>
+            <div id="status-delivery" class="big">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card money">
+      <div class="title">Detalle de cobro</div>
+      <div class="row money-row"><span>Valor base</span><strong id="price-base">—</strong></div>
+      <div class="row money-row"><span>IVA</span><strong id="price-tax">—</strong></div>
+      <div class="row money-row"><span>Servicio</span><strong id="price-fee">—</strong></div>
+      <div class="hr"></div>
+      <div class="row money-row total"><span>Total</span><strong id="price-total">—</strong></div>
+    </div>
+
+    <div class="card info">
+      <div class="title">Sigue tu trámite</div>
+      <p class="muted" id="friendly-message">—</p>
+      <div class="row">
+        <button id="btn-retry" class="btn secondary">Volver al catálogo</button>
+      </div>
+    </div>
+
+    <div class="card debug">
+      <div class="title">Detalles técnicos</div>
+      <div id="status-json" class="muted"><pre style="background:#fafafa;border:1px solid #eee;padding:8px;border-radius:8px;overflow:auto;font-size:13px"></pre></div>
     </div>
   </section>
 
@@ -310,3 +330,4 @@
 <script src="./main.js"></script>
 </body>
 </html>
+
