@@ -192,6 +192,40 @@
     body.on-form #btn-reload { display: none; }
     #btn-history { display: inline-flex !important; }
   </style>
+
+
+<style>
+  .fab-whatsapp{
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  background: #25D366;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 8px rgba(0,0,0,.25);
+  z-index: 9999;
+  text-decoration: none;
+}
+.fab-whatsapp img{
+  width: 28px; height: 28px; display: block;
+}
+
+/* Evita que reglas globales estiren el ícono */
+.fab-whatsapp * { max-width: none !important; max-height: none !important; }
+
+/* Respeta el notch / safe-area en iOS */
+@supports(padding:max(0px)){
+  .fab-whatsapp{ right: max(20px, env(safe-area-inset-right)); bottom: max(20px, env(safe-area-inset-bottom)); }
+}
+
+/* Pequeño hover (desktop) */
+@media (hover:hover){
+  .fab-whatsapp:hover{ transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,.28); }
+}
+
+</style>
+
 </head>
 <body>
 <header>
@@ -328,6 +362,15 @@
 </main>
 
 <script src="./main.js"></script>
+<!-- FAB WhatsApp -->
+<a id="fab-whatsapp"
+   class="fab-whatsapp"
+   href="https://wa.me/573001234567?text=Hola%20necesito%20ayuda%20con%20Tr%C3%A1miteYA"
+   target="_blank" rel="noopener"
+   aria-label="Ayuda por WhatsApp">
+  <img src="./img/whatsapp.png" alt="WhatsApp">
+</a>
+
 </body>
 </html>
 

@@ -463,10 +463,88 @@ async function confirmPayment(scenario) {
 }
 
 function renderStatus(order) {
-  S.statusPayment.textContent = mapPayment(order.payment);
-  S.statusDelivery.textContent = order.delivery ?? 'Pendiente';
-  const pretty = JSON.stringify(order, null, 2);
-  S.statusJson.innerHTML = `<pre>${pretty}</pre>`;
+  // Badge status mapping
+  const badge = document.getElementById('badge-status');
+  let badgeClass = 'pill warn', badgeText = 'Pago pendiente';
+  if (order.payment === 'paid' || order.payment?.status === 'success') {
+    badgeClass = 'pill success';
+    badgeText = 'Pago aprobado';
+  } else if (
+    order.payment === 'rejected' ||
+    order.payment === 'canceled' ||
+    order.payment === 'error' ||
+    (order.payment?.status === 'rejected') ||
+    (order.payment?.status === 'canceled') ||
+    (order.payment?.status === 'error')
+  ) {
+    badgeClass = 'pill error';
+    badgeText = 'Pago no aprobado';
+  } else if (!order.payment || order.payment === 'pending' || order.payment?.status === 'pending') {
+    badgeClass = 'pill warn';
+    badgeText = 'Pago pendiente';
+  }
+  if (badge) {
+    badge.className = badgeClass;
+    badge.textContent = badgeText;
+  }
+
+  // Order ID (short)
+  const oid = document.getElementById('order-id');
+  if (oid) oid.textContent = order.id ? String(order.id).slice(0, 8) : '—';
+
+  // Service name
+  const osvc = document.getElementById('order-service');
+  if (osvc) osvc.textContent = currentService?.name || 'Trámite';
+
+  // Order date
+  const odate = document.getElementById('order-date');
+  const ts = order.createdAt || Date.now();
+  if (odate) odate.textContent = new Date(ts).toLocaleString();
+
+  // Payment status (friendly)
+  const spay = document.getElementById('status-payment');
+  if (spay) spay.textContent = mapPayment(order.payment);
+
+  // Delivery status
+  const sdel = document.getElementById('status-delivery');
+  if (sdel) sdel.textContent = order.delivery ?? 'Pendiente';
+
+  // Breakdown
+  const price = currentService?.price;
+  const pbase = document.getElementById('price-base');
+  const ptax = document.getElementById('price-tax');
+  const pfee = document.getElementById('price-fee');
+  const ptotal = document.getElementById('price-total');
+  if (price) {
+    if (pbase) pbase.textContent = pesos(price.base);
+    if (ptax) ptax.textContent = pesos(price.tax);
+    if (pfee) pfee.textContent = pesos(price.fee);
+    if (ptotal) ptotal.textContent = pesos(price.total);
+  } else {
+    if (pbase) pbase.textContent = '—';
+    if (ptax) ptax.textContent = '—';
+    if (pfee) pfee.textContent = '—';
+    if (ptotal) ptotal.textContent = '—';
+  }
+
+  // Friendly message
+  const msg = document.getElementById('friendly-message');
+  let friendly = '—';
+  if (badgeClass === 'pill success') {
+    friendly = 'Tu pago fue aprobado ✅. En breve pondremos tu solicitud en cola y te avisaremos por correo/WhatsApp cuando esté lista.';
+  } else if (badgeClass === 'pill warn') {
+    friendly = 'Tu pago está pendiente ⏳. Si cerraste esta ventana por error, puedes reintentarlo desde tu historial.';
+  } else if (badgeClass === 'pill error') {
+    friendly = 'No pudimos procesar el pago ❌. Puedes reintentarlo ahora o elegir otro método.';
+  }
+  if (msg) msg.textContent = friendly;
+
+  // Debug JSON
+  const sjson = document.getElementById('status-json');
+  if (sjson) {
+    const pretty = JSON.stringify(order, null, 2);
+    sjson.innerHTML = `<pre>${pretty}</pre>`;
+  }
 }
 
 // =====================
@@ -507,3 +585,11 @@ if (!DEBUG && S.paySim) {
   // Si es modo debug, mantén el simulador oculto por defecto
   S.paySim.classList.add('hidden');
 }
+
+// Verificación de presencia y visibilidad del FAB
+document.addEventListener('DOMContentLoaded', () => {
+  const fab = document.getElementById('fab-whatsapp');
+  if (!fab) { console.warn('[FAB] no encontrado en DOM'); return; }
+  const cs = getComputedStyle(fab);
+  console.log('[FAB] visible?', fab.offsetParent !== null, { display: cs.display, opacity: cs.opacity, z: cs.zIndex });
+});
