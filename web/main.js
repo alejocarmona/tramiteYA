@@ -462,6 +462,70 @@ async function confirmPayment(scenario) {
   }
 }
 
+// ==== Confetti helpers (mínimo) ====
+function prefersReducedMotion(){
+  try { return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+  catch { return false; }
+}
+
+function normalizePayment(p){
+  if (!p) return 'pending';
+  if (typeof p === 'string') return p; // 'paid' | 'rejected' | 'canceled' | 'error'
+  // objeto { status: 'success' | 'insufficient' | 'canceled' | 'error' }
+  switch (p.status){
+    case 'success':      return 'paid';
+    case 'insufficient': return 'rejected';
+    case 'canceled':     return 'canceled';
+    case 'error':        return 'error';
+    default:             return 'pending';
+  }
+}
+
+const LOG = (...a)=>console.log('[CONFETTI]', ...a);
+window.__confettiShown = window.__confettiShown || new Set();
+
+function triggerConfetti(orderId){
+  if (prefersReducedMotion()) { LOG('reduced motion: skip'); return; }
+  if (!orderId) { LOG('missing orderId'); return; }
+  if (window.__confettiShown.has(orderId)) { LOG('already shown for', orderId); return; }
+
+  const layer = document.createElement('div');
+  layer.className = 'confetti';
+  layer.setAttribute('role','presentation');
+  document.body.appendChild(layer);
+
+  const colors = ['#10b981','#0ea5e9','#f59e0b','#ef4444','#6366f1','#14b8a6'];
+  const N = 16;
+  for (let i=0;i<N;i++){
+    const d = document.createElement('div');
+    d.className = 'confetti__piece';
+    d.style.left = (Math.random()*100)+'%';
+    d.style.background = colors[i % colors.length];
+    d.style.animationDelay = (Math.random()*0.3)+'s';
+    layer.appendChild(d);
+  }
+
+  window.__confettiShown.add(orderId);
+  LOG('START for', orderId);
+
+  setTimeout(()=>{
+    layer.remove();
+    LOG('END for', orderId);
+  }, 1200);
+}
+
+// Hook para probar manualmente desde consola
+window.__confettiTest = function(){
+  const id = 'TEST-'+Date.now();
+  triggerConfetti(id);
+  return id;
+};
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  LOG('ready. reducedMotion=', prefersReducedMotion());
+});
+
+
 function renderStatus(order) {
   // Badge status mapping
   const badge = document.getElementById('badge-status');
@@ -503,7 +567,17 @@ function renderStatus(order) {
 
   // Payment status (friendly)
   const spay = document.getElementById('status-payment');
-  if (spay) spay.textContent = mapPayment(order.payment);
+  let paymentText = mapPayment(order.payment);
+  if (spay) spay.textContent = paymentText;
+
+  // Confetti trigger if payment is 'paid' and not already shown
+  const normalizedPayment = (order.payment === 'paid' || order.payment?.status === 'success') ? 'paid'
+    : (order.payment === 'rejected' || order.payment === 'canceled' || order.payment === 'error' || order.payment?.status === 'rejected' || order.payment?.status === 'canceled' || order.payment?.status === 'error') ? 'rejected'
+    : (!order.payment || order.payment === 'pending' || order.payment?.status === 'pending') ? 'pending'
+    : '';
+  if (normalizedPayment === 'paid' && order.id && window.__confettiShown && !window.__confettiShown.has(order.id)) {
+    triggerConfetti(order.id);
+  }
 
   // Delivery status
   const sdel = document.getElementById('status-delivery');
@@ -545,6 +619,14 @@ function renderStatus(order) {
     const pretty = JSON.stringify(order, null, 2);
     sjson.innerHTML = `<pre>${pretty}</pre>`;
   }
+
+  // Confetti instrumentation
+const pnorm = normalizePayment(order.payment);
+LOG('renderStatus', { id: order.id, pnorm });
+if (pnorm === 'paid' && order.id){
+  triggerConfetti(order.id);
+}
+
 }
 
 // =====================
@@ -586,10 +668,49 @@ if (!DEBUG && S.paySim) {
   S.paySim.classList.add('hidden');
 }
 
-// Verificación de presencia y visibilidad del FAB
-document.addEventListener('DOMContentLoaded', () => {
-  const fab = document.getElementById('fab-whatsapp');
-  if (!fab) { console.warn('[FAB] no encontrado en DOM'); return; }
-  const cs = getComputedStyle(fab);
-  console.log('[FAB] visible?', fab.offsetParent !== null, { display: cs.display, opacity: cs.opacity, z: cs.zIndex });
+window.__confettiShown = window.__confettiShown || new Set();
+
+function triggerConfetti(orderId){
+  if (prefersReducedMotion()){ LOG('reduced motion: skip'); return; }
+  if (!orderId){ LOG('missing orderId'); return; }
+  if (window.__confettiShown.has(orderId)){ LOG('already shown for', orderId); return; }
+
+  // create container
+  let layer = document.createElement('div');
+  layer.className = 'confetti';
+  layer.setAttribute('role','presentation');
+  document.body.appendChild(layer);
+
+  // pieces
+  const colors = ['#10b981','#0ea5e9','#f59e0b','#ef4444','#6366f1','#14b8a6'];
+  const N = 16;
+  for (let i=0;i<N;i++){
+    const d = document.createElement('div');
+    d.className = 'confetti__piece';
+    d.style.left = (Math.random()*100)+'%';
+    d.style.background = colors[i % colors.length];
+    d.style.animationDelay = (Math.random()*0.3)+'s';
+    d.style.transform = 'translateY(-20vh) rotate(0deg)';
+    layer.appendChild(d);
+  }
+
+  window.__confettiShown.add(orderId);
+  LOG('START for', orderId);
+
+  // cleanup
+  setTimeout(()=>{
+    if (layer && layer.parentNode){ layer.parentNode.removeChild(layer); }
+    LOG('END for', orderId);
+  }, 1200);
+}
+
+// debug hook to force confetti manually from console
+window.__confettiTest = function(){
+  const id = 'TEST-'+Date.now();
+  triggerConfetti(id);
+  return id;
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  LOG('ready. reducedMotion=', prefersReducedMotion());
 });

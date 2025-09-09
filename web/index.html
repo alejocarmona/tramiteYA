@@ -226,6 +226,20 @@
 
 </style>
 
+<style>
+.confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 9999; }
+.confetti__piece { position: absolute; width: 8px; height: 14px; border-radius: 2px; opacity: .9; animation: fallConfetti 700ms ease-out forwards; }
+@keyframes fallConfetti { from { transform: translateY(-20vh) rotate(0deg); } to { transform: translateY(100vh) rotate(280deg); } }
+@media (prefers-reduced-motion: reduce) { .confetti, .confetti__piece { display: none !important; } }
+</style>
+
+<style>
+.confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:9999}
+.confetti__piece{position:absolute;width:8px;height:14px;border-radius:2px;opacity:.9;animation:fallConfetti 700ms ease-out forwards}
+@keyframes fallConfetti{from{transform:translateY(-20vh) rotate(0deg)}to{transform:translateY(100vh) rotate(280deg)}}
+@media (prefers-reduced-motion: reduce){.confetti,.confetti__piece{display:none!important}}
+</style>
+
 </head>
 <body>
 <header>
@@ -361,7 +375,7 @@
 
 </main>
 
-<script src="./main.js"></script>
+<script src="./main.js?v=14"></script>
 <!-- FAB WhatsApp -->
 <a id="fab-whatsapp"
    class="fab-whatsapp"
@@ -370,7 +384,7 @@
    aria-label="Ayuda por WhatsApp">
   <img src="./img/whatsapp.png" alt="WhatsApp">
 </a>
-
+<script src="./main.js?v=14"></script>
 </body>
 </html>
 
