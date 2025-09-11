@@ -7,3 +7,24 @@ firebase emulators:start --import "./emulator-data" --export-on-exit
 Cambias UI (index.html, main.js, css): solo guardar y refrescar navegador.
 
 Cambias backend (src/*.ts): correr npm run build y reiniciar el emulador.
+cd functions
+npm run build
+
+
+git remote add origin https://github.com/alejocarmona/tramiteYA
+
+Commits
+# Asegúrate de estar en la rama correcta
+git checkout ux-premium
+
+# Verifica qué archivos cambiaron
+git status
+
+# Agrega los cambios
+git add web/index.html web/main.js
+
+# Haz el commit
+git commit -m "Checkpoint MVP antes de integrar banner de mensajes (alert → banner)"
+
+# Sube la rama al remoto
+git push origin premium

@@ -183,6 +183,45 @@
       .title { font-size: 16px; }
       header { padding: 10px 8px; }
     }
+
+
+    .icon-copy {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+.icon-copy:hover {
+  opacity: 1;
+}
+.icon-copy:active {
+  transform: scale(0.9);
+}
+
+
+.section-hint { color: var(--muted); font-size: 13px; margin: 4px 0 10px; }
+
+    .money .money-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; }
+    .money .money-row.total strong { font-size:18px; }
+
+    /* ===== Banner MVP ===== */
+    .banner {
+      position: sticky;
+      top: 0; z-index: 20;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 14px;
+      font-size: 14px;
+      line-height: 1.3;
+      background: #E2E8F0;   /* info por defecto */
+      color: #0F172A;
+      border-bottom: 1px solid #CBD5E1;
+    }
+    .banner.is-error { background: #FEE2E2; color: #7F1D1D; border-bottom-color: #FCA5A5; }
+    .banner.is-warn  { background: #FEF3C7; color: #92400E; border-bottom-color: #FCD34D; }
+    .banner.is-info  { background: #DBEAFE; color: #1E3A8A; border-bottom-color: #93C5FD; }
+    .banner.hidden   { display: none; }
   </style>
   <style>
     body.on-form #btn-reload,
@@ -250,6 +289,11 @@
   </div>
 </header>
 
+<!-- Banner de mensajes (MVP) -->
+<div id="banner" class="banner hidden" role="status" aria-live="polite">
+  <span id="banner-text">—</span>
+</div>
+
 <main>
 
   <!-- LISTA -->
@@ -272,6 +316,7 @@
   </section>
 
   <!-- FORM -->
+  <!-- FORM -->
   <section id="screen-form" class="card hidden">
     <button id="btn-back" class="btn secondary">← Volver</button>
     <div class="hr"></div>
@@ -280,25 +325,49 @@
       <div class="title">Trámite</div>
     </div>
 
-    <!-- Desglose de precio -->
-    <div id="price-box" class="pill">
-      <div><strong>Desglose</strong></div>
-      <div id="price-breakdown" class="muted"></div>
-    </div>
+    <!-- El FORM ahora contiene: Contacto + Desglose + Campos del trámite -->
+    <form id="form">
+      <!-- 1) CONTACTO -->
+      <div class="card" id="contact-block" style="margin-bottom:12px;">
+        <div class="title">Contacto</div>
+        <p class="muted" style="margin:4px 0 8px">Usaremos estos datos para entregarte tu certificado.</p>
 
-    <div class="hr"></div>
+        <label for="contact_name">Nombre completo *</label>
+        <input name="contact_name" id="contact_name" type="text" autocomplete="name" required>
 
-    <form id="form"></form>
+        <label for="contact_email">Correo *</label>
+        <input name="contact_email" id="contact_email" type="email" autocomplete="email" required>
 
-    <div class="row">
+        <label for="contact_phone">Celular *</label>
+        <input name="contact_phone" id="contact_phone" type="tel" inputmode="tel" pattern="^[0-9 +()-]{7,}$" required>
+      </div>
+
+      <!-- 2) DESGLOSE -->
+<div class="card money" id="form-money">
+  <div class="title">Desglose de cobro</div>
+  <div class="row money-row"><span>Valor base</span><strong id="f-price-base">—</strong></div>
+  <div class="row money-row"><span>IVA</span><strong id="f-price-tax">—</strong></div>
+  <div class="row money-row"><span>Servicio</span><strong id="f-price-fee">—</strong></div>
+  <div class="hr"></div>
+  <div class="row money-row total"><span>Total</span><strong id="f-price-total">—</strong></div>
+</div>
+
+      <div class="hr"></div>
+
+      <!-- 3) CAMPOS DEL TRÁMITE (se pintan dinámicamente en este contenedor) -->
+      <div id="dyn-fields"></div>
+    </form>
+
+    <!-- Botón principal fuera del form (lo maneja JS) -->
+    <div class="row" style="margin-top:8px">
       <div class="muted" id="svc-price">Total: —</div>
       <button id="btn-create" class="btn">Crear orden</button>
     </div>
 
+    <!-- Simulador de pago -->
     <div id="pay-sim" class="hidden">
       <div class="hr"></div>
       <div class="paybox card">
-        <!-- Simulador de pago (solo emulador) -->
         <details id="simulator">
           <summary style="font-weight:700; cursor:pointer;">🧪 Simulador de pago (sólo emulador)</summary>
           <div class="muted" style="margin:8px 0;">
@@ -314,6 +383,8 @@
       </div>
     </div>
   </section>
+  <!-- FIN FORM -->
+
 
   <!-- ESTADO -->
   <section id="screen-status" class="card hidden">
@@ -329,8 +400,19 @@
       <div class="summary">
         <div class="row">
           <div>
-            <div class="muted">N° de orden</div>
-            <div class="big" id="order-id">—</div>
+
+<div class="muted">N° de orden</div>
+<div style="display:flex;align-items:center;gap:6px;">
+  <div class="big" id="order-id">—</div>
+  <img 
+    src="img/copiar.png" 
+    alt="Copiar" 
+    class="icon-copy" 
+    title="Copiar" 
+    data-copy="#order-id">
+</div>
+<div class="muted" style="margin-top:2px;">Contacto: <span id="order-contact">—</span></div>
+
           </div>
           <div>
             <div class="muted">Trámite</div>
@@ -347,6 +429,22 @@
             <div id="status-delivery" class="big">—</div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Trust badges row for premium status section -->
+    <div class="trust-row">
+      <div class="trust-badge" id="trust-sec">
+        <span class="trust-ico">🔒</span>
+        <span>Datos protegidos</span>
+      </div>
+      <div class="trust-badge" id="trust-pay">
+        <span class="trust-ico">✅</span>
+        <span>Pago seguro</span>
+      </div>
+      <div class="trust-badge" id="trust-sla">
+        <span class="trust-ico">⏱️</span>
+        <span id="trust-sla-text">Entrega aprox 24h</span>
       </div>
     </div>
 
@@ -375,7 +473,8 @@
 
 </main>
 
-<script src="./main.js?v=14"></script>
+<script defer src="./main.js?v=17"></script>
+
 <!-- FAB WhatsApp -->
 <a id="fab-whatsapp"
    class="fab-whatsapp"
@@ -384,7 +483,7 @@
    aria-label="Ayuda por WhatsApp">
   <img src="./img/whatsapp.png" alt="WhatsApp">
 </a>
-<script src="./main.js?v=14"></script>
+
 </body>
 </html>
 

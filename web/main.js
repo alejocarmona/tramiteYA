@@ -79,6 +79,7 @@ const S = {
 };
 
 function show(el) {
+  hideBanner();
   [S.list, S.form, S.status].forEach(x => x.classList.add('hidden'));
   el.classList.remove('hidden');
 }
@@ -120,10 +121,33 @@ async function api(path, opts={}) {
   const text = await res.text();
   if (!res.ok) {
     console.error('API error', { url, status: res.status, text });
-    alert(text || `HTTP ${res.status}`);
+    showBanner(text || `Error HTTP ${res.status}`, 'error', true); // persistente en errores de red/backend
     throw new Error(text || `HTTP ${res.status}`);
   }
   return text ? JSON.parse(text) : {};
+}
+
+function showBanner(message, type = 'error', persist = false) {
+  const el = document.getElementById('banner');
+  const txt = document.getElementById('banner-text');
+  if (!el || !txt) return;
+  txt.textContent = String(message || 'Ocurrió un error');
+  el.className = 'banner'; // reset
+  el.classList.add(type === 'warn' ? 'is-warn' : type === 'info' ? 'is-info' : 'is-error');
+  el.classList.remove('hidden');
+
+  // Auto-ocultar solo si NO es persistente
+  if (!persist) {
+    clearTimeout(window.__bannerTimer);
+    window.__bannerTimer = setTimeout(() => {
+      el.classList.add('hidden');
+    }, 4000);
+  }
+}
+
+function hideBanner() {
+  const el = document.getElementById('banner');
+  if (el) el.classList.add('hidden');
 }
 
 // =====================
@@ -186,6 +210,11 @@ function renderHistory() {
   $$(`#history-list [data-h-open]`).forEach(btn=>{
     btn.onclick = async () => {
       const st = await api(`orders?id=${encodeURIComponent(btn.dataset.hOpen)}`);
+      try {
+        const items = loadHistory();
+        const h = items.find(x => x.id === btn.dataset.hOpen);
+        if (h && h.contact && !st.contact) st.contact = h.contact;
+      } catch {}
       renderStatus(st);
       show(S.status);
     };
@@ -277,28 +306,61 @@ async function loadServices() {
 }
 
 async function openForm(id) {
+  // --- GUARD: asegura que el form tenga #contact-block y #dyn-fields
+  const form = S.formEl;
+  if (!form) return;
+
+  // Si no existe el bloque de contacto (por haber sido limpiado), lo reinyectamos
+  if (!document.getElementById('contact-block')) {
+    form.insertAdjacentHTML('afterbegin', `
+      <div class="card" id="contact-block" style="margin-bottom:12px;">
+        <div class="title">Contacto</div>
+        <p class="muted" style="margin:4px 0 8px">Usaremos estos datos para entregarte tu certificado.</p>
+
+        <label for="contact_name">Nombre completo *</label>
+        <input name="contact_name" id="contact_name" type="text" autocomplete="name" required>
+
+        <label for="contact_email">Correo *</label>
+        <input name="contact_email" id="contact_email" type="email" autocomplete="email" required>
+
+        <label for="contact_phone">Celular *</label>
+        <input name="contact_phone" id="contact_phone" type="tel" inputmode="tel" pattern="^[0-9 +()-]{7,}$" required>
+      </div>
+    `);
+  }
+
+  // Asegura el contenedor para los campos del trámite
+  let dyn = document.getElementById('dyn-fields');
+  if (!dyn) {
+    dyn = document.createElement('div');
+    dyn.id = 'dyn-fields';
+    form.appendChild(dyn);
+  } else {
+    dyn.innerHTML = ''; // limpia SOLO los campos dinámicos
+  }
+
+  // --- desde aquí continúa tu lógica actual de openForm ---
   const data = await api(`services?id=${encodeURIComponent(id)}`);
   const svc = data.item;
   currentService = svc;
 
   S.svcHead.innerHTML = `<div class="title">${svc.name}</div>`;
   const price = svc.price || { base:0, tax:0, fee:0, total:0 };
-  S.svcPrice.textContent = `Total: ${pesos(price.total)}`;
-  S.priceBreakdown.innerHTML = `
-    Base: <strong>${pesos(price.base||0)}</strong> &nbsp;•&nbsp;
-    IVA: <strong>${pesos(price.tax||0)}</strong> &nbsp;•&nbsp;
-    Servicio: <strong>${pesos(price.fee||0)}</strong> &nbsp;•&nbsp;
-    <span class="muted">Total:</span> <strong>${pesos(price.total||0)}</strong>
-  `;
+  S.svcPrice.textContent = '';
+  const put = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent = pesos(val||0); };
+  put('f-price-base',  price.base);
+  put('f-price-tax',   price.tax);
+  put('f-price-fee',   price.fee);
+  put('f-price-total', price.total);
 
-  S.formEl.innerHTML = '';
-  (svc.fields || []).forEach(f=>{
+  // pinta los campos del trámite dentro de #dyn-fields
+  (svc.fields || []).forEach(f => {
     const wrap = document.createElement('div');
-    wrap.innerHTML = `<label>${f.label}${f.required?' *':''}</label>`;
+    wrap.innerHTML = `<label>${f.label}${f.required ? ' *' : ''}</label>`;
     let input;
     if (f.type === 'select') {
       input = document.createElement('select');
-      (f.options||[]).forEach(op=>{
+      (f.options || []).forEach(op => {
         const o = document.createElement('option');
         o.value = op; o.textContent = op;
         input.appendChild(o);
@@ -312,14 +374,18 @@ async function openForm(id) {
     input.name = f.id;
     input.required = !!f.required;
     wrap.appendChild(input);
-    S.formEl.appendChild(wrap);
+    dyn.appendChild(wrap);
   });
 
-  // Ocultamos simulador hasta crear la orden
+  // precarga contacto guardado (si existe)
+  const c = loadContact();
+  if (c.name)  form.querySelector('[name="contact_name"]').value  = c.name;
+  if (c.email) form.querySelector('[name="contact_email"]').value = c.email;
+  if (c.phone) form.querySelector('[name="contact_phone"]').value = c.phone;
+
   S.paySim.classList.add('hidden');
   currentOrder = null;
 
-  // Asegura que el header sea visible en este estado
   lockHeader(false);
   lockNavigation(false);
   disableFormInputs(false);
@@ -327,6 +393,10 @@ async function openForm(id) {
 
   show(S.form);
 }
+
+const LS_CONTACT = 'tya_contact';
+function loadContact(){ try{return JSON.parse(localStorage.getItem(LS_CONTACT)||'{}')}catch{return{}} }
+function saveContact(c){ localStorage.setItem(LS_CONTACT, JSON.stringify(c||{})); }
 
 function formDataToObject(formEl) {
   const o = {};
@@ -338,30 +408,56 @@ async function createOrder() {
   console.log('entré a createOrder');
   if (creating) return; // anti-doble click
 
+  // 1) Validación nativa del formulario (HTML5)
+  const form = S.formEl;
+  if (!form.checkValidity()) {
+    form.reportValidity(); // muestra el tooltip exacto del campo
+    return;
+  }
+
+  // 2) Lee datos (ya validados) desde el formulario
+  const data = formDataToObject(form);
+  const contact = {
+    name:  (data.contact_name || '').trim(),
+    email: (data.contact_email || '').trim(),
+    phone: (data.contact_phone || '').trim(),
+  };
+  // Guarda contacto para precargar después
+  saveContact(contact);
+
+  // 3) Ahora sí bloqueamos UI y ponemos “Creando…”
   creating = true;
   setBtnLoading(S.btnCreate, true, "Creando…");
   disableFormInputs(true);
   lockHeader(true);
   lockNavigation(true);
 
-  try {
-    const formData = formDataToObject(S.formEl);
+  // Validación extra: contacto
+  const emailOk = /^\S+@\S+\.\S+$/.test(contact.email);
+  if (!contact.name || !contact.email || !contact.phone || !emailOk) {
+    showBanner('Completa tus datos de contacto (correo válido requerido).', 'warn');
+    setBtnLoading(S.btnCreate, false, "", "Crear orden");
+    disableFormInputs(false);
+    lockHeader(false);
+    lockNavigation(false);
+    creating = false;
+    return;
+  }
 
-    // 1) Crear orden
+  try {
     console.log('[createOrder] POST /orders…');
     const order = await api('orders', {
       method:'POST',
       body: JSON.stringify({
         service_id: currentService.id,
-        contact: { email: 'demo@correo.com', phone: '3001234567' },
-        form_data: formData
+        contact,
+        form_data: data
       })
     });
     console.log('[createOrder] /orders OK', order);
-    currentOrder = order; // { id }
+    currentOrder = order;
     window.__lastOrderId = order.id;
 
-    // Guardar en historial (aún sin pago)
     addHistory({
       id: order.id,
       serviceId: currentService.id,
@@ -369,10 +465,10 @@ async function createOrder() {
       createdAt: Date.now(),
       status: 'pending',
       payment: null,
-      delivery: null
+      delivery: null,
+      contact
     });
 
-    // 2) Inicializar pago (mock)
     console.log('[createOrder] POST /payments_init…');
     await api('payments_init', {
       method:'POST',
@@ -380,52 +476,25 @@ async function createOrder() {
     });
     console.log('[createOrder] /payments_init OK');
 
-    // Manejo explícito para modo normal (no DEBUG)
     if (!DEBUG) {
-      // No mostramos simulador en modo normal: vamos directo al estado y desbloqueamos UI
       const status = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
       renderStatus(status);
-      // desbloqueo de UI
       disableFormInputs(false);
       lockHeader(false);
       lockNavigation(false);
       setBtnLoading(S.btnCreate, false, "", "Crear orden");
       show(S.status);
-      return; // salimos de createOrder aquí
+      return;
     }
-
-    // 3) Mostrar simulador y mantener bloqueo hasta que el usuario elija resultado (solo DEBUG)
-    console.log('[createOrder] DEBUG=', DEBUG);
-    console.log('[createOrder] paySim exists?', !!S.paySim, S.paySim);
-    if (S.paySim) console.log('[createOrder] paySim classList BEFORE:', S.paySim.className);
 
     if (S.paySim) {
       S.paySim.classList.remove('hidden');
       S.paySim.style.display = 'block';
-      const box = S.paySim.querySelector('.paybox');
-      if (box) box.classList.add('open');
-      console.log('[createOrder] paySim classList AFTER:', S.paySim.className);
-      S.paySim.scrollIntoView({behavior:'smooth'});
-      console.log('[createOrder] paySim computed display =', getComputedStyle(S.paySim).display);
-      console.log('[createOrder] paybox computed display =', box ? getComputedStyle(box).display : '(no .paybox)');
-      
-      // Bloque solicitado para forzar visibilidad y apertura del simulador
       const sim = document.getElementById('simulator');
-      if (sim) {
-        sim.style.display = 'block';   // quita el display:none inline
-        sim.open = true;               // abre el details
-        console.log('[createOrder] simulator forced visible & open');
-      } else {
-        console.warn('[createOrder] NO #simulator inside #pay-sim');
-      }
-    } else {
-      console.warn('[createOrder] NO hay #pay-sim en el DOM');
+      if (sim) { sim.style.display = 'block'; sim.open = true; }
     }
-    // NO liberamos bloqueo aquí: se libera al confirmar el pago
-
   } catch (e) {
-    alert(e.message || 'Error creando la orden');
-    // liberamos bloqueo si falló
+    showBanner(e?.message || 'No pudimos crear tu orden. Intenta más tarde o contáctanos por WhatsApp.', 'error', true);
     disableFormInputs(false);
     lockHeader(false);
     lockNavigation(false);
@@ -434,6 +503,7 @@ async function createOrder() {
     creating = false;
   }
 }
+
 
 // Simulador → confirma pago mock y actualiza UI + historial
 async function confirmPayment(scenario) {
@@ -458,7 +528,7 @@ async function confirmPayment(scenario) {
 
     show(S.status);
   } catch (e) {
-    alert(e.message || 'Error confirmando pago');
+    showBanner(e?.message || 'No pudimos confirmar el pago en este momento.', 'error');
   }
 }
 
@@ -526,8 +596,42 @@ document.addEventListener('DOMContentLoaded', ()=>{
 });
 
 
+
+function humanPaymentLabel(payment) {
+  // acepta string o objeto {status:...}
+  const p = typeof payment === 'string' ? payment : (payment?.status || '');
+  if (p === 'paid' || p === 'success') return '✅ Pago aprobado';
+  if (p === 'rejected' || p === 'insufficient') return '❌ Pago rechazado';
+  if (p === 'canceled') return '❌ Pago cancelado';
+  if (p === 'error') return '❌ Error en el pago';
+  return '⏳ Aún no procesado';
+}
+
+function friendlyMessageFor(order) {
+  // order.payment puede ser string o {status}
+  const p = typeof order.payment === 'string' ? order.payment : (order.payment?.status || null);
+
+  if (p === 'paid' || p === 'success') {
+    return 'Tu pago fue aprobado ✅. En breve pondremos tu solicitud en cola y te avisaremos por correo/WhatsApp cuando esté lista.';
+  }
+  if (p === 'rejected' || p === 'insufficient') {
+    return 'No pudimos procesar el pago ❌. Puedes reintentarlo ahora o elegir otro método desde tu historial.';
+  }
+  if (p === 'canceled') {
+    return 'Cancelaste el pago ❌. Puedes retomarlo cuando quieras desde tu historial.';
+  }
+  if (p === 'error') {
+    return 'Tuvimos un inconveniente técnico ⚠️. Intenta nuevamente en unos minutos o contáctanos por WhatsApp.';
+  }
+  // pending / null / desconocido
+  return 'Tu pago está pendiente ⏳. Si cerraste esta ventana por error, puedes reintentarlo desde tu historial.';
+}
+
+
+
+
 function renderStatus(order) {
-  // Badge status mapping
+  // --- Badge status mapping (igual a tu lógica) ---
   const badge = document.getElementById('badge-status');
   let badgeClass = 'pill warn', badgeText = 'Pago pendiente';
   if (order.payment === 'paid' || order.payment?.status === 'success') {
@@ -537,9 +641,9 @@ function renderStatus(order) {
     order.payment === 'rejected' ||
     order.payment === 'canceled' ||
     order.payment === 'error' ||
-    (order.payment?.status === 'rejected') ||
-    (order.payment?.status === 'canceled') ||
-    (order.payment?.status === 'error')
+    order.payment?.status === 'rejected' ||
+    order.payment?.status === 'canceled' ||
+    order.payment?.status === 'error'
   ) {
     badgeClass = 'pill error';
     badgeText = 'Pago no aprobado';
@@ -552,56 +656,47 @@ function renderStatus(order) {
     badge.textContent = badgeText;
   }
 
-  // Order ID (short)
+  // --- Order ID (short) ---
   const oid = document.getElementById('order-id');
   if (oid) oid.textContent = order.id ? String(order.id).slice(0, 8) : '—';
 
-  // Service name
+  // --- Service name: prioriza lo que venga con la orden ---
   const osvc = document.getElementById('order-service');
-  if (osvc) osvc.textContent = currentService?.name || 'Trámite';
+  if (osvc) osvc.textContent = order.serviceName || order.service || currentService?.name || 'Trámite';
 
-  // Order date
+  // --- Order date ---
   const odate = document.getElementById('order-date');
   const ts = order.createdAt || Date.now();
   if (odate) odate.textContent = new Date(ts).toLocaleString();
 
-  // Payment status (friendly)
+  // --- Payment status (friendly) ---
   const spay = document.getElementById('status-payment');
-  let paymentText = mapPayment(order.payment);
-  if (spay) spay.textContent = paymentText;
+  if (spay) spay.textContent = mapPayment(order.payment);
 
-  // Confetti trigger if payment is 'paid' and not already shown
-  const normalizedPayment = (order.payment === 'paid' || order.payment?.status === 'success') ? 'paid'
-    : (order.payment === 'rejected' || order.payment === 'canceled' || order.payment === 'error' || order.payment?.status === 'rejected' || order.payment?.status === 'canceled' || order.payment?.status === 'error') ? 'rejected'
-    : (!order.payment || order.payment === 'pending' || order.payment?.status === 'pending') ? 'pending'
-    : '';
-  if (normalizedPayment === 'paid' && order.id && window.__confettiShown && !window.__confettiShown.has(order.id)) {
-    triggerConfetti(order.id);
-  }
-
-  // Delivery status
+  // --- Delivery status ---
   const sdel = document.getElementById('status-delivery');
   if (sdel) sdel.textContent = order.delivery ?? 'Pendiente';
 
-  // Breakdown
-  const price = currentService?.price;
+  // --- Breakdown: usa snapshot de la orden si existe ---
+  // Preferencias: order.priceSnapshot -> order.price -> currentService.price
+  const snapPrice = order.priceSnapshot || order.price || currentService?.price || null;
   const pbase = document.getElementById('price-base');
-  const ptax = document.getElementById('price-tax');
-  const pfee = document.getElementById('price-fee');
-  const ptotal = document.getElementById('price-total');
-  if (price) {
-    if (pbase) pbase.textContent = pesos(price.base);
-    if (ptax) ptax.textContent = pesos(price.tax);
-    if (pfee) pfee.textContent = pesos(price.fee);
-    if (ptotal) ptotal.textContent = pesos(price.total);
+  const ptax  = document.getElementById('price-tax');
+  const pfee  = document.getElementById('price-fee');
+  const ptotal= document.getElementById('price-total');
+  if (snapPrice) {
+    if (pbase) pbase.textContent  = pesos(snapPrice.base ?? 0);
+    if (ptax)  ptax.textContent   = pesos(snapPrice.tax  ?? 0);
+    if (pfee)  pfee.textContent   = pesos(snapPrice.fee  ?? 0);
+    if (ptotal)ptotal.textContent = pesos(snapPrice.total?? 0);
   } else {
-    if (pbase) pbase.textContent = '—';
-    if (ptax) ptax.textContent = '—';
-    if (pfee) pfee.textContent = '—';
+    if (pbase)  pbase.textContent  = '—';
+    if (ptax)   ptax.textContent   = '—';
+    if (pfee)   pfee.textContent   = '—';
     if (ptotal) ptotal.textContent = '—';
   }
 
-  // Friendly message
+  // --- Friendly message (con tu mapping de badgeClass) ---
   const msg = document.getElementById('friendly-message');
   let friendly = '—';
   if (badgeClass === 'pill success') {
@@ -613,21 +708,47 @@ function renderStatus(order) {
   }
   if (msg) msg.textContent = friendly;
 
-  // Debug JSON
+  // --- Debug JSON ---
   const sjson = document.getElementById('status-json');
   if (sjson) {
     const pretty = JSON.stringify(order, null, 2);
     sjson.innerHTML = `<pre>${pretty}</pre>`;
   }
 
-  // Confetti instrumentation
-const pnorm = normalizePayment(order.payment);
-LOG('renderStatus', { id: order.id, pnorm });
-if (pnorm === 'paid' && order.id){
-  triggerConfetti(order.id);
+  // --- Confetti: **una sola** invocación, con dedupe por orden ---
+  const pnorm = normalizePayment(order.payment); // asume que ya tienes esta helper
+  LOG('renderStatus', { id: order.id, pnorm });
+  if (pnorm === 'paid' && order.id) {
+    if (!window.__confettiShown) window.__confettiShown = new Set();
+    if (!window.__confettiShown.has(order.id)) {
+      triggerConfetti(order.id);
+      window.__confettiShown.add(order.id);
+    }
+  }
+
+  // fallback: if no order.contact, try to fetch it from local history by id
+  if (!order.contact && order.id) {
+    try {
+      const items = loadHistory();
+      const h = items.find(x => x.id === order.id);
+      if (h?.contact) order.contact = h.contact;
+    } catch {}
+  }
+  // Contacto
+  const contactEl = document.getElementById('order-contact');
+  let contactText = '—';
+  if (order.contact) {
+    if (order.contact.email && order.contact.phone) {
+      contactText = `${order.contact.email} / ${order.contact.phone}`;
+    } else if (order.contact.email) {
+      contactText = order.contact.email;
+    } else if (order.contact.phone) {
+      contactText = order.contact.phone;
+    }
+  }
+  if (contactEl) contactEl.textContent = contactText;
 }
 
-}
 
 // =====================
 // Events
@@ -711,6 +832,25 @@ window.__confettiTest = function(){
   return id;
 }
 
-document.addEventListener('DOMContentLoaded', ()=>{
-  LOG('ready. reducedMotion=', prefersReducedMotion());
+
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-copy]');
+  if (!btn) return;
+  const sel = btn.getAttribute('data-copy');
+  const el = document.querySelector(sel);
+  if (!el) return;
+
+  try {
+    await navigator.clipboard.writeText(el.innerText.trim());
+    const oldTitle = btn.title;
+    const oldSrc = btn.src;
+    btn.title = 'Copiado ✔';
+    btn.src = 'img/copiar.png'; // necesitas un ícono de check pequeño (o reusar el verde de Pago aprobado)
+    setTimeout(() => {
+      btn.title = oldTitle;
+      btn.src = oldSrc;
+    }, 2000);
+  } catch {
+    btn.title = 'Error';
+  }
 });
