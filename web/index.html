@@ -222,6 +222,25 @@
     .banner.is-warn  { background: #FEF3C7; color: #92400E; border-bottom-color: #FCD34D; }
     .banner.is-info  { background: #DBEAFE; color: #1E3A8A; border-bottom-color: #93C5FD; }
     .banner.hidden   { display: none; }
+
+    /* --- Desglose (premium) --- */
+    .card.money{padding:12px 16px;background:#fff;border:1px solid #e2e8f0;border-radius:12px}
+    .money-row{display:flex;align-items:center;justify-content:space-between;padding:4px 0 2px 0;font-size:14px;margin:0;}
+    .money-row span{color:#475569;text-align:left;}
+    .money-row strong{text-align:right;min-width:80px;display:inline-block;font-weight:700;}
+    .money-row.total{border-top:1px solid #e2e8f0;margin-top:8px;padding-top:10px;}
+    .money-row.total strong{font-size:17px;font-weight:800;}
+
+    /* CTA full width */
+    .btn.block{width:100%}
+
+    /* Form section blocks */
+    .section-block{margin-bottom:0;padding:0 0 0 0;}
+    .form-section-title{display:flex;align-items:center;font-size:16px;font-weight:700;margin:0 0 4px 0;color:#0f172a;padding-left:2px;}
+    .form-section-title .section-ico{font-size:16px;margin-right:6px;}
+    .form-section-help{font-size:12px;color:#64748b;margin:0 0 8px 2px;padding-left:22px;}
+    .section-content{padding-left:22px;}
+    .hr{border-top:1px solid #eee;}
   </style>
   <style>
     body.on-form #btn-reload,
@@ -277,6 +296,27 @@
 .confetti__piece{position:absolute;width:8px;height:14px;border-radius:2px;opacity:.9;animation:fallConfetti 700ms ease-out forwards}
 @keyframes fallConfetti{from{transform:translateY(-20vh) rotate(0deg)}to{transform:translateY(100vh) rotate(280deg)}}
 @media (prefers-reduced-motion: reduce){.confetti,.confetti__piece{display:none!important}}
+
+/* ==== STATUS HERO (no romper estilos actuales) ==== */
+.status-hero{
+  display:flex; align-items:flex-start; gap:12px;
+  background:#E6F9ED; color:#14532d; /* success por defecto */
+  border:1px solid rgba(0,0,0,.06);
+  border-radius: var(--radius);
+  padding:14px 16px;
+  box-shadow: var(--shadow);
+  margin-bottom: 12px;
+}
+.status-hero__icon{ font-size:22px; line-height:1; margin-top:2px; }
+.status-hero__content{ flex:1 1 auto; }
+.status-hero__title{ margin:0 0 4px; font-size:18px; font-weight:800; }
+.status-hero__subtitle{ margin:0; font-size:14px; opacity:.9; }
+.status-hero__time{ white-space:nowrap; font-size:13px; color:#334155; opacity:.8; }
+
+/* Modificadores de estado (colores suaves, sin afectar otros componentes) */
+.status-hero.is-success{ background:#E6F9ED; color:#166534; }
+.status-hero.is-pending{ background:#FEF3C7; color:#92400E; }
+.status-hero.is-error  { background:#FEE2E2; color:#991B1B; }
 </style>
 
 </head>
@@ -316,7 +356,7 @@
   </section>
 
   <!-- FORM -->
-  <!-- FORM -->
+ 
   <section id="screen-form" class="card hidden">
     <button id="btn-back" class="btn secondary">← Volver</button>
     <div class="hr"></div>
@@ -328,40 +368,49 @@
     <!-- El FORM ahora contiene: Contacto + Desglose + Campos del trámite -->
     <form id="form">
       <!-- 1) CONTACTO -->
-      <div class="card" id="contact-block" style="margin-bottom:12px;">
-        <div class="title">Contacto</div>
-        <p class="muted" style="margin:4px 0 8px">Usaremos estos datos para entregarte tu certificado.</p>
-
-        <label for="contact_name">Nombre completo *</label>
-        <input name="contact_name" id="contact_name" type="text" autocomplete="name" required>
-
-        <label for="contact_email">Correo *</label>
-        <input name="contact_email" id="contact_email" type="email" autocomplete="email" required>
-
-        <label for="contact_phone">Celular *</label>
-        <input name="contact_phone" id="contact_phone" type="tel" inputmode="tel" pattern="^[0-9 +()-]{7,}$" required>
+      <div class="hr" style="border-top:1px solid #eee"></div>
+      <!-- Contacto solo una vez, con id único -->
+      <div class="section-block" id="contact-block">
+        <div class="form-section-title"><span class="section-ico">👤</span>Contacto</div>
+        <div class="section-content">
+          <p class="form-section-help" style="margin:4px 0 8px">Usaremos estos datos para entregarte tu certificado.</p><p></p>
+          <label for="contact_name">Nombre completo *</label>
+          <input name="contact_name" id="contact_name" type="text" autocomplete="name" required>
+          <label for="contact_email">Correo *</label>
+          <input name="contact_email" id="contact_email" type="email" autocomplete="email" required>
+          <label for="contact_phone">Celular *</label>
+          <input name="contact_phone" id="contact_phone" type="tel" inputmode="tel" pattern="^[0-9 +()-]{7,}$" required>
+        </div>
       </div>
 
       <!-- 2) DESGLOSE -->
-<div class="card money" id="form-money">
-  <div class="title">Desglose de cobro</div>
-  <div class="row money-row"><span>Valor base</span><strong id="f-price-base">—</strong></div>
-  <div class="row money-row"><span>IVA</span><strong id="f-price-tax">—</strong></div>
-  <div class="row money-row"><span>Servicio</span><strong id="f-price-fee">—</strong></div>
-  <div class="hr"></div>
-  <div class="row money-row total"><span>Total</span><strong id="f-price-total">—</strong></div>
-</div>
-
-      <div class="hr"></div>
-
+      <div class="section-block">
+        <div class="form-section-title"><span class="section-ico">💵</span>Desglose de precios</div>
+        <div class="section-content">
+          <p class="form-section-help" style="margin:4px 0 8px">Este es el valor a pagar.</p><p></p>
+          <div class="card money" id="form-money">
+            <div class="money-row"><span>Valor base</span><strong id="form-price-base">—</strong></div>
+            <div class="money-row"><span>IVA</span><strong id="form-price-tax">—</strong></div>
+            <div class="money-row"><span>Servicio</span><strong id="form-price-fee">—</strong></div>
+            <div class="money-row total"><span>Total</span><strong id="form-price-total">—</strong></div>
+          </div>
+        </div>
+      </div>
+      <div class="hr" style="border-top:1px solid #eee"></div>
+<p></p>
       <!-- 3) CAMPOS DEL TRÁMITE (se pintan dinámicamente en este contenedor) -->
-      <div id="dyn-fields"></div>
+      <div class="section-block">
+        <div class="form-section-title"><span class="section-ico">📄</span>Datos para el trámite</div>
+        <div class="section-content">
+          <p class="form-section-help">Estos datos se usan para generar el documento.</p><p></p>
+          <div id="dyn-fields"></div>
+        </div>
+      </div>
     </form>
-
+<div class="hr" style="border-top:1px solid #eee"></div>
     <!-- Botón principal fuera del form (lo maneja JS) -->
-    <div class="row" style="margin-top:8px">
-      <div class="muted" id="svc-price">Total: —</div>
-      <button id="btn-create" class="btn">Crear orden</button>
+    <div style="margin-top:12px">
+      <button id="btn-create" class="btn block">Crear orden</button>
     </div>
 
     <!-- Simulador de pago -->
@@ -390,6 +439,18 @@
   <section id="screen-status" class="card hidden">
     <div class="title page-title">Estado de tu solicitud</div>
     <div class="hr"></div>
+
+    <!-- HERO DE ESTADO (nuevo) -->
+    <section id="status-hero" class="status-hero is-success">
+      <div class="status-hero__icon" id="hero-ico" aria-hidden="true">✅</div>
+      <div class="status-hero__content">
+        <h2 class="status-hero__title" id="hero-title">¡Pago aprobado!</h2>
+        <p class="status-hero__subtitle" id="hero-sub">
+          Tu pago fue procesado con éxito. Te avisaremos por correo/WhatsApp cuando tu certificado esté listo.
+        </p>
+      </div>
+      <div class="status-hero__time" id="hero-date">—</div>
+    </section>
 
     <div class="card trust">
       <div class="row">
@@ -474,6 +535,25 @@
 </main>
 
 <script defer src="./main.js?v=17"></script>
+<script>
+// Helper para eliminar duplicados del bloque de contacto
+function ensureSingleContactBlock() {
+  const form = document.getElementById('form');
+  if (!form) return;
+  const blocks = form.querySelectorAll('#contact-block');
+  blocks.forEach((b, i) => { if (i > 0) b.remove(); }); // deja solo el primero
+}
+
+// Observa el <form> y deduplica si alguien inyecta Contacto
+document.addEventListener('DOMContentLoaded', () => {
+  const formForObserver = document.getElementById('form');
+  if (formForObserver) {
+    ensureSingleContactBlock(); // primera pasada
+    const obs = new MutationObserver(() => ensureSingleContactBlock());
+    obs.observe(formForObserver, { childList: true, subtree: true });
+  }
+});
+</script>
 
 <!-- FAB WhatsApp -->
 <a id="fab-whatsapp"

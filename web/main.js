@@ -1,3 +1,5 @@
+let __FORM_BASE_HTML = ''; // Declaración global antes de cualquier uso
+
 console.info(`TYA main.js – build ${new Date().toLocaleString()}`);
 
 // =====================
@@ -88,6 +90,14 @@ function pesos(n) {
   return new Intl.NumberFormat('es-CO', {
     style:'currency', currency:'COP', maximumFractionDigits:0
   }).format(n || 0);
+}
+
+// --- evita duplicados del bloque Contacto ---
+function ensureSingleContactBlock() {
+  const form = document.getElementById('form');
+  if (!form) return;
+  const blocks = form.querySelectorAll('#contact-block');
+  blocks.forEach((b, i) => { if (i > 0) b.remove(); }); // deja solo el primero
 }
 
 function mapPayment(payment) {
@@ -271,6 +281,23 @@ function lockUIForPayment(active) {
   if (S.btnCreate) S.btnCreate.disabled = active;
 }
 
+
+// Evita que se duplique el bloque de Contacto dentro del <form id="form">
+function dedupeContactBlock() {
+  try {
+    const form = document.getElementById('form');
+    if (!form) return;
+    const blocks = form.querySelectorAll('#contact-block'); // pueden existir duplicados aunque sea un id
+    for (let i = 1; i < blocks.length; i++) {
+      blocks[i].remove(); // conserva solo el primero
+    }
+  } catch (e) {
+    console.warn('dedupeContactBlock:', e);
+  }
+}
+
+
+
 // =====================
 // Screens
 // =====================
@@ -306,6 +333,22 @@ async function loadServices() {
 }
 
 async function openForm(id) {
+  // blindaje anti-duplicados de Contacto
+  ensureSingleContactBlock();
+
+  // 1) Restaura el formulario a su estado base (evita acumulación de bloques)
+  if (S.formEl && __FORM_BASE_HTML) {
+    S.formEl.innerHTML = __FORM_BASE_HTML;
+  }
+
+  // 2) (Opcional) Redundancia defensiva por si algo más inyecta Contacto
+  (function dedupeContactBlock(){
+    const form = document.getElementById('form');
+    if (!form) return;
+    const blocks = form.querySelectorAll('#contact-block');
+    for (let i = 1; i < blocks.length; i++) blocks[i].remove();
+  })();
+  
   // --- GUARD: asegura que el form tenga #contact-block y #dyn-fields
   const form = S.formEl;
   if (!form) return;
@@ -313,21 +356,39 @@ async function openForm(id) {
   // Si no existe el bloque de contacto (por haber sido limpiado), lo reinyectamos
   if (!document.getElementById('contact-block')) {
     form.insertAdjacentHTML('afterbegin', `
-      <div class="card" id="contact-block" style="margin-bottom:12px;">
-        <div class="title">Contacto</div>
-        <p class="muted" style="margin:4px 0 8px">Usaremos estos datos para entregarte tu certificado.</p>
+      <div class="section-block">
+        <div class="form-section-title"><span class="section-ico">👤</span>Contacto</div>
+        <div class="section-content">
+          <p class="form-section-help" style="margin:4px 0 8px">Usaremos estos datos para entregarte tu certificado.</p><p></p>
 
-        <label for="contact_name">Nombre completo *</label>
-        <input name="contact_name" id="contact_name" type="text" autocomplete="name" required>
+          <label for="contact_name">Nombre completo *</label>
+          <input name="contact_name" id="contact_name" type="text" autocomplete="name" required>
 
-        <label for="contact_email">Correo *</label>
-        <input name="contact_email" id="contact_email" type="email" autocomplete="email" required>
+          <label for="contact_email">Correo *</label>
+          <input name="contact_email" id="contact_email" type="email" autocomplete="email" required>
 
-        <label for="contact_phone">Celular *</label>
-        <input name="contact_phone" id="contact_phone" type="tel" inputmode="tel" pattern="^[0-9 +()-]{7,}$" required>
+          <label for="contact_phone">Celular *</label>
+          <input name="contact_phone" id="contact_phone" type="tel" inputmode="tel" pattern="^[0-9 +()-]{7,}$" required>
+        </div>
       </div>
     `);
   }
+
+  // === Snapshot del HTML base del formulario (para restaurarlo en cada openForm) ===
+document.addEventListener('DOMContentLoaded', () => {
+  const f = document.getElementById('form');
+  if (f) {
+    __FORM_BASE_HTML = f.innerHTML; // debe incluir #contact-block y #dyn-fields
+  }
+
+  // Observa el <form> y deduplica si alguien inyecta Contacto
+  const formForObserver = document.getElementById('form');
+  if (formForObserver) {
+    ensureSingleContactBlock(); // primera pasada
+    const obs = new MutationObserver(() => ensureSingleContactBlock());
+    obs.observe(formForObserver, { childList: true, subtree: true });
+  }
+});
 
   // Asegura el contenedor para los campos del trámite
   let dyn = document.getElementById('dyn-fields');
@@ -346,12 +407,14 @@ async function openForm(id) {
 
   S.svcHead.innerHTML = `<div class="title">${svc.name}</div>`;
   const price = svc.price || { base:0, tax:0, fee:0, total:0 };
-  S.svcPrice.textContent = '';
-  const put = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent = pesos(val||0); };
-  put('f-price-base',  price.base);
-  put('f-price-tax',   price.tax);
-  put('f-price-fee',   price.fee);
-  put('f-price-total', price.total);
+  const fpb = document.getElementById('form-price-base');
+  const fpt = document.getElementById('form-price-tax');
+  const fpf = document.getElementById('form-price-fee');
+  const fptot = document.getElementById('form-price-total');
+  if (fpb)  fpb.textContent  = pesos(price.base||0);
+  if (fpt)  fpt.textContent  = pesos(price.tax||0);
+  if (fpf)  fpf.textContent  = pesos(price.fee||0);
+  if (fptot)fptot.textContent= pesos(price.total||0);
 
   // pinta los campos del trámite dentro de #dyn-fields
   (svc.fields || []).forEach(f => {
@@ -391,6 +454,8 @@ async function openForm(id) {
   disableFormInputs(false);
   if (S.btnCreate) S.btnCreate.disabled = false;
 
+  // Limpia posibles duplicados si algún paso volvió a inyectar Contacto
+  dedupeContactBlock();
   show(S.form);
 }
 
@@ -702,7 +767,7 @@ function renderStatus(order) {
   if (badgeClass === 'pill success') {
     friendly = 'Tu pago fue aprobado ✅. En breve pondremos tu solicitud en cola y te avisaremos por correo/WhatsApp cuando esté lista.';
   } else if (badgeClass === 'pill warn') {
-    friendly = 'Tu pago está pendiente ⏳. Si cerraste esta ventana por error, puedes reintentarlo desde tu historial.';
+    friendly = 'Tu pago está pendiente ⏳. Si cerraste esta ventana, puedes reintentarlo desde tu historial.';
   } else if (badgeClass === 'pill error') {
     friendly = 'No pudimos procesar el pago ❌. Puedes reintentarlo ahora o elegir otro método.';
   }
@@ -747,8 +812,58 @@ function renderStatus(order) {
     }
   }
   if (contactEl) contactEl.textContent = contactText;
+
+  // === Hero ===
+  updateHero(order);
 }
 
+// Normaliza el estado de pago a: 'paid' | 'rejected' | 'canceled' | 'error' | 'pending'
+function paymentState(order) {
+  const p = order?.payment;
+  if (!p) return 'pending';
+  if (typeof p === 'string') return p; // 'paid', 'rejected', 'canceled', 'error', 'pending'
+  switch (p.status) {
+    case 'success':      return 'paid';
+    case 'insufficient': return 'rejected';
+    case 'canceled':     return 'canceled';
+    case 'error':        return 'error';
+    default:             return 'pending';
+  }
+}
+
+// Actualiza el hero usando SIEMPRE el 'order' recibido
+function updateHero(order) {
+  const hero = document.getElementById('status-hero');
+  if (!hero) return;
+
+  const heroIcon  = document.getElementById('hero-ico');
+  const heroTitle = document.getElementById('hero-title');
+  const heroSub   = document.getElementById('hero-sub');
+  const heroDate  = document.getElementById('hero-date');
+
+  hero.classList.remove('is-success', 'is-error', 'is-pending');
+
+  const p = paymentState(order);
+  if (p === 'paid') {
+    hero.classList.add('is-success');
+    if (heroIcon)  heroIcon.textContent  = '✅';
+    if (heroTitle) heroTitle.textContent = '¡Pago aprobado!';
+    if (heroSub)   heroSub.textContent   = 'Tu pago fue procesado con éxito. Te avisaremos por correo/WhatsApp cuando tu certificado esté listo.';
+  } else if (p === 'rejected' || p === 'canceled' || p === 'error') {
+    hero.classList.add('is-error');
+    if (heroIcon)  heroIcon.textContent  = '❌';
+    if (heroTitle) heroTitle.textContent = 'Pago rechazado';
+    if (heroSub)   heroSub.textContent   = 'No pudimos procesar el pago. Puedes reintentarlo más tarde o elegir otro método.';
+  } else {
+    hero.classList.add('is-pending');
+    if (heroIcon)  heroIcon.textContent  = '⏳';
+    if (heroTitle) heroTitle.textContent = 'Pago pendiente';
+    if (heroSub)   heroSub.textContent   = 'Tu pago está pendiente. Si cerraste esta ventana, puedes reintentarlo desde tu historial.';
+  }
+
+  const d = new Date(order.createdAt || order.created || Date.now());
+  if (heroDate) heroDate.textContent = d.toLocaleString('es-CO');
+}
 
 // =====================
 // Events
@@ -825,6 +940,35 @@ function triggerConfetti(orderId){
   }, 1200);
 }
 
+// debug hook to force confetti manually from console
+window.__confettiTest = function(){
+  const id = 'TEST-'+Date.now();
+  triggerConfetti(id);
+  return id;
+}
+
+
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-copy]');
+  if (!btn) return;
+  const sel = btn.getAttribute('data-copy');
+  const el = document.querySelector(sel);
+  if (!el) return;
+
+  try {
+    await navigator.clipboard.writeText(el.innerText.trim());
+    const oldTitle = btn.title;
+    const oldSrc = btn.src;
+    btn.title = 'Copiado ✔';
+    btn.src = 'img/copiar.png'; // necesitas un ícono de check pequeño (o reusar el verde de Pago aprobado)
+    setTimeout(() => {
+      btn.title = oldTitle;
+      btn.src = oldSrc;
+    }, 2000);
+  } catch {
+    btn.title = 'Error';
+  }
+});
 // debug hook to force confetti manually from console
 window.__confettiTest = function(){
   const id = 'TEST-'+Date.now();
