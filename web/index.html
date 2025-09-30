@@ -1,9 +1,15 @@
 <!doctype html>
 <html lang="es">
 <head>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>TrámiteYA – MVP</title>
+  <link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0EA5E9">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+
+  <title>TrámiteYA</title>
   <style>
     :root {
       --bg: #F7F7F7;
@@ -18,14 +24,15 @@
       --tap: 44px;
       --gap: 12px;
     }
-    body {
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
-      font-size: 16px;
-      line-height: 1.4;
-      background: var(--bg);
-      color: var(--ink);
-      margin: 0;
-    }
+body {
+  font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  font-size: 16px;
+  line-height: 1.4;
+  background: var(--bg);
+  color: var(--ink);
+  margin: 0;
+}
+
     header {
       position: sticky;
       top: 0;
@@ -249,6 +256,21 @@
     }
     body.on-form #btn-reload { display: none; }
     #btn-history { display: inline-flex !important; }
+
+    .sr-only {
+  position:absolute !important;
+  width:1px !important;
+  height:1px !important;
+  padding:0 !important;
+  margin:-1px !important;
+  overflow:hidden !important;
+  clip:rect(0,0,0,0) !important;
+  white-space:nowrap !important;
+  border:0 !important;
+}
+
+/* Asegura tamaño consistente del icono dentro de .btn.small */
+.btn.small img { display:block; width:30px; height:30px; }
   </style>
 
 
@@ -282,21 +304,63 @@
   .fab-whatsapp:hover{ transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,.28); }
 }
 
+.btn-icon {
+  background: var(--primary);
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.btn-icon img {
+  width: 24px;
+  height: 24px;
+}
+
+/* Efectos */
+.btn-icon:hover,
+.btn-icon:focus {
+  /* background: var(--primary-dark); */
+  transform: scale(1.05); /* leve zoom */
+  background: #0284c7;
+}
+
+
+
+</style>
+
+<style>/* Confetti */
+.confetti {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 9999;
+}
+.confetti__piece {
+  position: absolute;
+  top: -10vh;
+  width: 10px;
+  height: 16px;
+  animation: confetti-fall 1.2s ease-out forwards;
+  will-change: transform, opacity;
+}
+@keyframes confetti-fall {
+  to {
+    transform: translateY(110vh) rotate(540deg);
+    opacity: 0.9;
+  }
+}
+
 </style>
 
 <style>
-.confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 9999; }
-.confetti__piece { position: absolute; width: 8px; height: 14px; border-radius: 2px; opacity: .9; animation: fallConfetti 700ms ease-out forwards; }
-@keyframes fallConfetti { from { transform: translateY(-20vh) rotate(0deg); } to { transform: translateY(100vh) rotate(280deg); } }
-@media (prefers-reduced-motion: reduce) { .confetti, .confetti__piece { display: none !important; } }
-</style>
-
-<style>
-.confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:9999}
-.confetti__piece{position:absolute;width:8px;height:14px;border-radius:2px;opacity:.9;animation:fallConfetti 700ms ease-out forwards}
-@keyframes fallConfetti{from{transform:translateY(-20vh) rotate(0deg)}to{transform:translateY(100vh) rotate(280deg)}}
-@media (prefers-reduced-motion: reduce){.confetti,.confetti__piece{display:none!important}}
-
 /* ==== STATUS HERO (no romper estilos actuales) ==== */
 .status-hero{
   display:flex; align-items:flex-start; gap:12px;
@@ -317,15 +381,36 @@
 .status-hero.is-success{ background:#E6F9ED; color:#166534; }
 .status-hero.is-pending{ background:#FEF3C7; color:#92400E; }
 .status-hero.is-error  { background:#FEE2E2; color:#991B1B; }
+
+/* Fila responsiva para CTAs del certificado */
+#cert-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+@media (max-width: 520px) {
+  #cert-actions { grid-template-columns: 1fr; }
+}
+
 </style>
 
 </head>
 <body>
 <header>
-  <div class="brand">TrámiteYA (Emulador)</div>
+  <div class="brand">TrámiteYA</div>
   <div class="actions">
-    <button id="btn-reload" class="btn secondary">Recargar catálogo</button>
-    <button id="btn-history" class="btn secondary">Mis solicitudes</button>
+    <!-- <button id="btn-refresh" class="btn small" title="Recargar catálogo" aria-label="Recargar catálogo">⟳</button>
+    <button id="btn-history" class="btn small" title="Mis solicitudes" aria-label="Mis solicitudes">🗂</button>-->
+
+<button id="btn-refresh" class="btn-icon" title="Recargar catálogo">
+  <img src="./img/actualizar.png" alt="Recargar catálogo">
+</button>
+
+
+<button id="btn-history" class="btn-icon" title="Mis solicitudes">
+  <img src="./img/historial.png" alt="Mis solicitudes">
+</button>
+
   </div>
 </header>
 
@@ -338,19 +423,21 @@
 
   <!-- LISTA -->
   <section id="screen-list" class="card">
-    <h1 class="page-title">Catálogo de trámites</h1>
+    <h1 id="catalog" class="page-title">Catálogo de trámites</h1>
+
     <div class="hr"></div>
     <div id="services" class="grid"></div>
     <div id="empty" class="muted hidden">No hay trámites disponibles.</div>
     <div class="hr"></div>
     <div id="history" class="">
-      <h1 class="page-title">Mis solicitudes (en este dispositivo)</h1>
-      <div class="hr"></div>
+      <h1 id="history-title" class="page-title">Mis solicitudes (en este dispositivo)</h1>
       <div class="row">
         <div class="muted">Solo visibles en este teléfono</div>
         <div class="spacer"></div>
         <button id="btn-clear-history" class="btn ghost">Limpiar historial</button>
       </div>
+      <div class="hr"></div>
+
       <div id="history-list" class="history-list muted"></div>
     </div>
   </section>
@@ -371,7 +458,11 @@
       <div class="hr" style="border-top:1px solid #eee"></div>
       <!-- Contacto solo una vez, con id único -->
       <div class="section-block" id="contact-block">
-        <div class="form-section-title"><span class="section-ico">👤</span>Contacto</div>
+        <div class="form-section-title" >
+  <!--<img src="./img/icon_contacto.svg" alt="" class="section-ico">-->
+  <img src="./img/icon_contacto.svg" alt="" class="section-ico" style="width:30px; height:auto;">
+  Contacto
+</div>
         <div class="section-content">
           <p class="form-section-help" style="margin:4px 0 8px">Usaremos estos datos para entregarte tu certificado.</p><p></p>
           <label for="contact_name">Nombre completo *</label>
@@ -385,7 +476,14 @@
 
       <!-- 2) DESGLOSE -->
       <div class="section-block">
-        <div class="form-section-title"><span class="section-ico">💵</span>Desglose de precios</div>
+       <!-- <div class="form-section-title"><span class="section-ico">💵</span>Desglose de precios</div>-->
+        <div class="form-section-title" >
+  <!--<img src="./img/icon_contacto.svg" alt="" class="section-ico">-->
+  <img src="./img/icon_precio.svg" alt="" class="section-ico" style="width:30px; height:auto;">
+  Desglose de precios
+</div>
+
+     
         <div class="section-content">
           <p class="form-section-help" style="margin:4px 0 8px">Este es el valor a pagar.</p><p></p>
           <div class="card money" id="form-money">
@@ -400,7 +498,14 @@
 <p></p>
       <!-- 3) CAMPOS DEL TRÁMITE (se pintan dinámicamente en este contenedor) -->
       <div class="section-block">
-        <div class="form-section-title"><span class="section-ico">📄</span>Datos para el trámite</div>
+        <!--<div class="form-section-title"><span class="section-ico">📄</span>Datos para el trámite</div>-->
+
+                <div class="form-section-title" >
+  <!--<img src="./img/icon_contacto.svg" alt="" class="section-ico">-->
+  <img src="./img/icon_tramite.svg" alt="" class="section-ico" style="width:30px; height:auto;">
+  Datos para el trámite
+</div>
+
         <div class="section-content">
           <p class="form-section-help">Estos datos se usan para generar el documento.</p><p></p>
           <div id="dyn-fields"></div>
@@ -440,24 +545,23 @@
     <div class="title page-title">Estado de tu solicitud</div>
     <div class="hr"></div>
 
+<!-- ...existing code... -->
     <!-- HERO DE ESTADO (nuevo) -->
-    <section id="status-hero" class="status-hero is-success">
-      <div class="status-hero__icon" id="hero-ico" aria-hidden="true">✅</div>
+    <section id="status-hero" class="status-hero is-pending">
+      <div class="status-hero__icon" id="hero-ico" aria-hidden="true">⏳</div>
       <div class="status-hero__content">
-        <h2 class="status-hero__title" id="hero-title">¡Pago aprobado!</h2>
+        <h2 class="status-hero__title" id="hero-title">Pago pendiente</h2>
         <p class="status-hero__subtitle" id="hero-sub">
-          Tu pago fue procesado con éxito. Te avisaremos por correo/WhatsApp cuando tu certificado esté listo.
+          Estamos procesando el estado de tu pago…
         </p>
       </div>
       <div class="status-hero__time" id="hero-date">—</div>
     </section>
+<!-- ...existing code... -->
+
 
     <div class="card trust">
-      <div class="row">
-        <div id="badge-status" class="pill">—</div>
-        <div class="spacer"></div>
-        <div class="muted" id="order-date">—</div>
-      </div>
+
       <div class="summary">
         <div class="row">
           <div>
@@ -480,21 +584,18 @@
             <div class="big" id="order-service">—</div>
           </div>
         </div>
-        <div class="row">
-          <div>
-            <div class="muted">Pago</div>
-            <div id="status-payment" class="big">—</div>
-          </div>
-          <div>
-            <div class="muted">Entrega</div>
-            <div id="status-delivery" class="big">—</div>
-          </div>
-        </div>
+<div class="row">
+  <div>
+    <div class="muted">Entrega</div>
+    <div id="status-delivery" class="big">—</div>
+  </div>
+</div>
+
       </div>
     </div>
 
     <!-- Trust badges row for premium status section -->
-    <div class="trust-row">
+    <!-- <div class="trust-row">
       <div class="trust-badge" id="trust-sec">
         <span class="trust-ico">🔒</span>
         <span>Datos protegidos</span>
@@ -507,7 +608,7 @@
         <span class="trust-ico">⏱️</span>
         <span id="trust-sla-text">Entrega aprox 24h</span>
       </div>
-    </div>
+    </div> -->
 
     <div class="card money">
       <div class="title">Detalle de cobro</div>
@@ -518,15 +619,41 @@
       <div class="row money-row total"><span>Total</span><strong id="price-total">—</strong></div>
     </div>
 
-    <div class="card info">
-      <div class="title">Sigue tu trámite</div>
+<!-- Acciones de certificado (solo visible cuando delivered) -->
+<div id="cert-actions" style="display:none; margin-top:0.75rem;">
+  <a id="download-cert-link" class="btn primary">📄 Descargar certificado</a>
+  <a id="share-wa" class="btn">📲 Compartir por WhatsApp</a>
+  <a id="share-mail" class="btn">✉️ Enviar por correo</a>
+</div>
+
+
+
+
+<!-- Utilidad para operador -->
+ <div id="op-actions" class="hidden">
+
+<!--<div id="op-actions" style="display:none; margin-top:0.5rem;">-->
+  <button id="copy-op" class="btn secondary">📋 Copiar datos para operador</button>
+  <span id="copy-ok" class="muted" style="display:none; margin-left:8px;">Copiado ✓</span>
+</div>
+<!-- finUtilidad para operador -->
+
+
+<div class="card info" id="followup-card">
+  <div class="title">Sigue tu trámite</div>
       <p class="muted" id="friendly-message">—</p>
       <div class="row">
-        <button id="btn-retry" class="btn secondary">Volver al catálogo</button>
+       <!--  <button id="btn-retry" class="btn secondary">Volver al catálogo</button> -->
       </div>
     </div>
 
-    <div class="card debug">
+<!-- CTA persistente -->
+<div class="actions" id="back-cta" style="margin-top:12px">
+  <button id="btn-retry" class="btn secondary">Volver al catálogo</button>
+</div>
+
+
+<div class="card debug hidden" id="debug-card">
       <div class="title">Detalles técnicos</div>
       <div id="status-json" class="muted"><pre style="background:#fafafa;border:1px solid #eee;padding:8px;border-radius:8px;overflow:auto;font-size:13px"></pre></div>
     </div>
@@ -555,14 +682,16 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
+
 <!-- FAB WhatsApp -->
 <a id="fab-whatsapp"
    class="fab-whatsapp"
-   href="https://wa.me/573001234567?text=Hola%20necesito%20ayuda%20con%20Tr%C3%A1miteYA"
+   href="#"
    target="_blank" rel="noopener"
    aria-label="Ayuda por WhatsApp">
-  <img src="./img/whatsapp.png" alt="WhatsApp">
+  <img src="./img/soporte.png" alt="WhatsApp">
 </a>
+
 
 </body>
 </html>

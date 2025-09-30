@@ -1,10 +1,100 @@
 let __FORM_BASE_HTML = ''; // Declaración global antes de cualquier uso
-
 console.info(`TYA main.js – build ${new Date().toLocaleString()}`);
 
-// =====================
-// Config
-// =====================
+// Flag único de debug (evita divergencias)
+const QS = new URLSearchParams(location.search);
+const IS_DEBUG = QS.get('debug') === '1';
+
+/* -------------------------------------------------
+   Confetti CSS auto-inject (por si falta en index)
+--------------------------------------------------*/
+(function ensureConfettiCSS(){
+  if (document.getElementById('confetti-css')) return;
+  const css = `
+  .confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:9999}
+  .confetti__piece{position:absolute;top:-10vh;width:10px;height:16px;animation:confetti-fall 1.2s ease-out forwards;will-change:transform,opacity}
+  @keyframes confetti-fall{to{transform:translateY(110vh) rotate(540deg);opacity:.9}}
+  `;
+  const style = document.createElement('style');
+  style.id = 'confetti-css';
+  style.textContent = css;
+  document.head.appendChild(style);
+})();
+
+/* =====================
+   Config & Init
+===================== */
+// Config pública (solo whatsappNumber)
+let APP_CONFIG = { whatsappNumber: "" };
+
+async function loadConfig() {
+  try {
+    const PROJECT_ID = 'apptramiteya';
+    const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/config/public`;
+    const res = await fetch(url);
+    const data = await res.json();
+    APP_CONFIG.whatsappNumber = data?.fields?.whatsappNumber?.stringValue || '';
+    console.log('[config]', APP_CONFIG);
+  } catch (e) {
+    console.warn('[config] no se pudo cargar:', e);
+  }
+}
+
+/* === WhatsApp helpers === */
+function normalizePhone(raw) {
+  const digits = String(raw || '').replace(/\D/g, '');
+  return digits.startsWith('57') ? digits : `57${digits}`;
+}
+function buildWhatsAppLink(text) {
+  const num = normalizePhone(APP_CONFIG.whatsappNumber);
+  const q = new URLSearchParams({ text });
+  return `https://wa.me/${num}?${q.toString()}`;
+}
+function hasWhatsAppNumber() {
+  return !!(APP_CONFIG.whatsappNumber && String(APP_CONFIG.whatsappNumber).trim());
+}
+function mapPayment(payment) {
+  if (!payment) return '⏳ Aún no procesado';
+  if (typeof payment === 'string') {
+    if (payment === 'paid') return '✅ Pago aprobado';
+    if (payment === 'rejected') return '❌ Pago rechazado';
+    if (payment === 'canceled') return '❌ Pago cancelado';
+    if (payment === 'error') return '❌ Error en el pago';
+    return payment;
+  }
+  switch (payment.status) {
+    case 'success':      return '✅ Pago aprobado';
+    case 'insufficient': return '⚠️ Fondos insuficientes';
+    case 'canceled':     return '❌ Pago cancelado';
+    case 'error':        return '❌ Error en el pago';
+    default:             return payment.status || '—';
+  }
+}
+function buildWAOrderMessage(order) {
+  if (!order) return "Hola, necesito ayuda con TrámiteYA";
+  const parts = [
+    "Hola, necesito ayuda con TrámiteYA.",
+    `Orden: ${order.id}`,
+    order.serviceName ? `Trámite: ${order.serviceName}` : "",
+    `Estado: ${order.status || "—"} / Pago: ${mapPayment(order.payment)}`
+  ].filter(Boolean);
+  return parts.join(" ");
+}
+function setFabWhatsApp(orderOrNull) {
+  const fab = document.getElementById('fab-whatsapp');
+  if (!fab) return;
+  if (!hasWhatsAppNumber()) { fab.style.display = 'none'; return; }
+  fab.style.display = '';
+  fab.onclick = (e) => {
+    e.preventDefault();
+    const msg = buildWAOrderMessage(orderOrNull || null);
+    window.open(buildWhatsAppLink(msg), '_blank');
+  };
+}
+
+/* =====================
+   Config (Functions base URL)
+===================== */
 function functionUrl(name) {
   const qp = new URLSearchParams(location.search);
   const ENV = qp.get('env');
@@ -21,11 +111,7 @@ function functionUrl(name) {
   } else if (ENV === 'prod') {
     base = 'https://us-central1-apptramiteya.cloudfunctions.net';
   } else {
-    if (
-      location.hostname === 'localhost' ||
-      location.hostname === '127.0.0.1' ||
-      location.port === '5000'
-    ) {
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.port === '5000') {
       base = `http://${location.hostname}:5001/apptramiteya/us-central1`;
     } else {
       base = 'https://us-central1-apptramiteya.cloudfunctions.net';
@@ -35,9 +121,9 @@ function functionUrl(name) {
   return `${base}/${name}`;
 }
 
-// =====================
-// Helpers DOM & Currency
-// =====================
+/* =====================
+   Helpers DOM & Currency
+===================== */
 const $  = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const S = {
@@ -49,7 +135,7 @@ const S = {
   empty:    $("#empty"),
 
   // header
-  btnReload: $("#btn-reload"),
+  btnReload: $("#btn-refresh"),
   btnHistory: $("#btn-history"),
   btnClearHistory: $("#btn-clear-history"),
 
@@ -71,7 +157,6 @@ const S = {
   paySim: $("#pay-sim"),
 
   // estado
-  statusPayment: $("#status-payment"),
   statusDelivery: $("#status-delivery"),
   statusJson: $("#status-json"),
 
@@ -85,42 +170,25 @@ function show(el) {
   [S.list, S.form, S.status].forEach(x => x.classList.add('hidden'));
   el.classList.remove('hidden');
 }
-
 function pesos(n) {
   return new Intl.NumberFormat('es-CO', {
     style:'currency', currency:'COP', maximumFractionDigits:0
   }).format(n || 0);
 }
-
-// --- evita duplicados del bloque Contacto ---
-function ensureSingleContactBlock() {
-  const form = document.getElementById('form');
-  if (!form) return;
-  const blocks = form.querySelectorAll('#contact-block');
-  blocks.forEach((b, i) => { if (i > 0) b.remove(); }); // deja solo el primero
+function isTerminalOrder(order) {
+  const terminalStatus = order.status === 'delivered' || order.status === 'failed';
+  const terminalPayment = ['rejected', 'canceled', 'error'].includes(String(order.payment || '').toLowerCase());
+  return terminalStatus || terminalPayment;
+}
+function isDebug() {
+  const q = new URLSearchParams(location.search);
+  if (q.get('debug') === '1') return true;
+  try { return localStorage.getItem('tya_debug') === '1'; } catch { return false; }
 }
 
-function mapPayment(payment) {
-  if (!payment) return '⏳ Aún no procesado';
-  if (typeof payment === 'string') {
-    if (payment === 'paid') return '✅ Pago aprobado';
-    if (payment === 'rejected') return '❌ Pago rechazado';
-    if (payment === 'canceled') return '❌ Pago cancelado';
-    if (payment === 'error') return '❌ Error en el pago';
-    return payment;
-  }
-  switch (payment.status) {
-    case 'success':      return '✅ Pago aprobado';
-    case 'insufficient': return '⚠️ Fondos insuficientes';
-    case 'canceled':     return '❌ Pago cancelado';
-    case 'error':        return '❌ Error en el pago';
-    default:             return payment.status || '—';
-  }
-}
-
-// =====================
-// API Wrapper
-// =====================
+/* =====================
+   API Wrapper
+===================== */
 async function api(path, opts={}) {
   const url = functionUrl(path);
   const res = await fetch(url, {
@@ -131,7 +199,7 @@ async function api(path, opts={}) {
   const text = await res.text();
   if (!res.ok) {
     console.error('API error', { url, status: res.status, text });
-    showBanner(text || `Error HTTP ${res.status}`, 'error', true); // persistente en errores de red/backend
+    showBanner(text || `Error HTTP ${res.status}`, 'error', true);
     throw new Error(text || `HTTP ${res.status}`);
   }
   return text ? JSON.parse(text) : {};
@@ -145,24 +213,19 @@ function showBanner(message, type = 'error', persist = false) {
   el.className = 'banner'; // reset
   el.classList.add(type === 'warn' ? 'is-warn' : type === 'info' ? 'is-info' : 'is-error');
   el.classList.remove('hidden');
-
-  // Auto-ocultar solo si NO es persistente
   if (!persist) {
     clearTimeout(window.__bannerTimer);
-    window.__bannerTimer = setTimeout(() => {
-      el.classList.add('hidden');
-    }, 4000);
+    window.__bannerTimer = setTimeout(() => { el.classList.add('hidden'); }, 4000);
   }
 }
-
 function hideBanner() {
   const el = document.getElementById('banner');
   if (el) el.classList.add('hidden');
 }
 
-// =====================
-// Local history (localStorage)
-// =====================
+/* =====================
+   Local history (localStorage)
+===================== */
 const LS_KEY = 'tya_orders';
 
 function loadHistory() {
@@ -189,7 +252,7 @@ async function refreshHistoryStatus(id) {
   try {
     const st = await api(`orders?id=${encodeURIComponent(id)}`);
     updateHistoryStatus(id, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
-  } catch { /* noop */ }
+  } catch {}
 }
 function renderHistory() {
   const items = loadHistory();
@@ -214,10 +277,22 @@ function renderHistory() {
     </div>
   `).join('');
 
-  $$(`#history-list [data-h-reload]`).forEach(btn=>{
-    btn.onclick = () => refreshHistoryStatus(btn.dataset.hReload);
+  // Deshabilitar "Revisar estado" si es terminal; si no, handler
+  const reloadBtns = $$('#history-list [data-h-reload]');
+  reloadBtns.forEach((btn, idx) => {
+    const o = items[idx];
+    if (isTerminalOrder(o)) {
+      btn.setAttribute('disabled', '');
+      btn.classList.add('secondary', 'outline');
+      btn.textContent = 'Finalizado';
+    } else {
+      btn.onclick = () => refreshHistoryStatus(btn.dataset.hReload);
+    }
   });
-  $$(`#history-list [data-h-open]`).forEach(btn=>{
+
+  // Abrir detalle
+  const openBtns = $$('#history-list [data-h-open]');
+  openBtns.forEach(btn => {
     btn.onclick = async () => {
       const st = await api(`orders?id=${encodeURIComponent(btn.dataset.hOpen)}`);
       try {
@@ -231,11 +306,9 @@ function renderHistory() {
   });
 }
 
-// =====================
-// Utilidades UI solicitadas
-// =====================
-
-// 1. setBtnLoading
+/* =====================
+   Utilidades UI
+===================== */
 function setBtnLoading(btn, loading, textLoading = "Creando…", textIdle = "Crear orden") {
   if (!btn) return;
   if (loading) {
@@ -249,58 +322,45 @@ function setBtnLoading(btn, loading, textLoading = "Creando…", textIdle = "Cre
     btn.classList.remove('is-loading');
   }
 }
-
-// 2. disableFormInputs
 function disableFormInputs(disabled) {
-  document.querySelectorAll('#form input, #form select').forEach(el => {
-    el.disabled = disabled;
-  });
+  document.querySelectorAll('#form input, #form select').forEach(el => { el.disabled = disabled; });
 }
-
-// 3. lockHeader
 function lockHeader(disabled) {
   ['#btn-reload', '#btn-history', '#btn-clear-history'].forEach(sel => {
     const btn = document.querySelector(sel);
     if (btn) btn.disabled = disabled;
   });
 }
-
-// 4. lockNavigation
 function lockNavigation(disabled) {
   ['#btn-back', '#btn-retry'].forEach(sel => {
     const btn = document.querySelector(sel);
     if (btn) btn.disabled = disabled;
   });
 }
-
-// Des/activa bloqueo global en el formulario (cuando está el simulador)
 function lockUIForPayment(active) {
-  lockHeader(active);
-  disableFormInputs(active);
-  lockNavigation(active);
+  lockHeader(active); disableFormInputs(active); lockNavigation(active);
   if (S.btnCreate) S.btnCreate.disabled = active;
 }
 
-
-// Evita que se duplique el bloque de Contacto dentro del <form id="form">
+// Evita duplicados del bloque Contacto
+function ensureSingleContactBlock() {
+  const form = document.getElementById('form');
+  if (!form) return;
+  const blocks = form.querySelectorAll('#contact-block');
+  blocks.forEach((b, i) => { if (i > 0) b.remove(); });
+}
 function dedupeContactBlock() {
   try {
     const form = document.getElementById('form');
     if (!form) return;
-    const blocks = form.querySelectorAll('#contact-block'); // pueden existir duplicados aunque sea un id
-    for (let i = 1; i < blocks.length; i++) {
-      blocks[i].remove(); // conserva solo el primero
-    }
-  } catch (e) {
-    console.warn('dedupeContactBlock:', e);
-  }
+    const blocks = form.querySelectorAll('#contact-block');
+    for (let i = 1; i < blocks.length; i++) blocks[i].remove();
+  } catch (e) { console.warn('dedupeContactBlock:', e); }
 }
 
-
-
-// =====================
-// Screens
-// =====================
+/* =====================
+   Screens
+===================== */
 let currentService = null;
 let currentOrder   = null;
 let creating       = false;
@@ -333,33 +393,19 @@ async function loadServices() {
 }
 
 async function openForm(id) {
-  // blindaje anti-duplicados de Contacto
   ensureSingleContactBlock();
+  if (S.formEl && __FORM_BASE_HTML) S.formEl.innerHTML = __FORM_BASE_HTML;
+  dedupeContactBlock();
 
-  // 1) Restaura el formulario a su estado base (evita acumulación de bloques)
-  if (S.formEl && __FORM_BASE_HTML) {
-    S.formEl.innerHTML = __FORM_BASE_HTML;
-  }
-
-  // 2) (Opcional) Redundancia defensiva por si algo más inyecta Contacto
-  (function dedupeContactBlock(){
-    const form = document.getElementById('form');
-    if (!form) return;
-    const blocks = form.querySelectorAll('#contact-block');
-    for (let i = 1; i < blocks.length; i++) blocks[i].remove();
-  })();
-  
-  // --- GUARD: asegura que el form tenga #contact-block y #dyn-fields
   const form = S.formEl;
   if (!form) return;
 
-  // Si no existe el bloque de contacto (por haber sido limpiado), lo reinyectamos
   if (!document.getElementById('contact-block')) {
     form.insertAdjacentHTML('afterbegin', `
-      <div class="section-block">
+      <div class="section-block" id="contact-block">
         <div class="form-section-title"><span class="section-ico">👤</span>Contacto</div>
         <div class="section-content">
-          <p class="form-section-help" style="margin:4px 0 8px">Usaremos estos datos para entregarte tu certificado.</p><p></p>
+          <p class="form-section-help" style="margin:4px 0 8px">Usaremos estos datos para entregarte tu certificado.</p>
 
           <label for="contact_name">Nombre completo *</label>
           <input name="contact_name" id="contact_name" type="text" autocomplete="name" required>
@@ -374,33 +420,10 @@ async function openForm(id) {
     `);
   }
 
-  // === Snapshot del HTML base del formulario (para restaurarlo en cada openForm) ===
-document.addEventListener('DOMContentLoaded', () => {
-  const f = document.getElementById('form');
-  if (f) {
-    __FORM_BASE_HTML = f.innerHTML; // debe incluir #contact-block y #dyn-fields
-  }
-
-  // Observa el <form> y deduplica si alguien inyecta Contacto
-  const formForObserver = document.getElementById('form');
-  if (formForObserver) {
-    ensureSingleContactBlock(); // primera pasada
-    const obs = new MutationObserver(() => ensureSingleContactBlock());
-    obs.observe(formForObserver, { childList: true, subtree: true });
-  }
-});
-
-  // Asegura el contenedor para los campos del trámite
   let dyn = document.getElementById('dyn-fields');
-  if (!dyn) {
-    dyn = document.createElement('div');
-    dyn.id = 'dyn-fields';
-    form.appendChild(dyn);
-  } else {
-    dyn.innerHTML = ''; // limpia SOLO los campos dinámicos
-  }
+  if (!dyn) { dyn = document.createElement('div'); dyn.id = 'dyn-fields'; form.appendChild(dyn); }
+  else { dyn.innerHTML = ''; }
 
-  // --- desde aquí continúa tu lógica actual de openForm ---
   const data = await api(`services?id=${encodeURIComponent(id)}`);
   const svc = data.item;
   currentService = svc;
@@ -416,7 +439,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (fpf)  fpf.textContent  = pesos(price.fee||0);
   if (fptot)fptot.textContent= pesos(price.total||0);
 
-  // pinta los campos del trámite dentro de #dyn-fields
   (svc.fields || []).forEach(f => {
     const wrap = document.createElement('div');
     wrap.innerHTML = `<label>${f.label}${f.required ? ' *' : ''}</label>`;
@@ -440,7 +462,6 @@ document.addEventListener('DOMContentLoaded', () => {
     dyn.appendChild(wrap);
   });
 
-  // precarga contacto guardado (si existe)
   const c = loadContact();
   if (c.name)  form.querySelector('[name="contact_name"]').value  = c.name;
   if (c.email) form.querySelector('[name="contact_email"]').value = c.email;
@@ -449,12 +470,9 @@ document.addEventListener('DOMContentLoaded', () => {
   S.paySim.classList.add('hidden');
   currentOrder = null;
 
-  lockHeader(false);
-  lockNavigation(false);
-  disableFormInputs(false);
+  lockHeader(false); lockNavigation(false); disableFormInputs(false);
   if (S.btnCreate) S.btnCreate.disabled = false;
 
-  // Limpia posibles duplicados si algún paso volvió a inyectar Contacto
   dedupeContactBlock();
   show(S.form);
 }
@@ -462,7 +480,6 @@ document.addEventListener('DOMContentLoaded', () => {
 const LS_CONTACT = 'tya_contact';
 function loadContact(){ try{return JSON.parse(localStorage.getItem(LS_CONTACT)||'{}')}catch{return{}} }
 function saveContact(c){ localStorage.setItem(LS_CONTACT, JSON.stringify(c||{})); }
-
 function formDataToObject(formEl) {
   const o = {};
   [...new FormData(formEl).entries()].forEach(([k,v]) => o[k] = String(v));
@@ -471,40 +488,30 @@ function formDataToObject(formEl) {
 
 async function createOrder() {
   console.log('entré a createOrder');
-  if (creating) return; // anti-doble click
+  if (creating) return;
 
-  // 1) Validación nativa del formulario (HTML5)
   const form = S.formEl;
-  if (!form.checkValidity()) {
-    form.reportValidity(); // muestra el tooltip exacto del campo
-    return;
-  }
+  if (!form.checkValidity()) { form.reportValidity(); return; }
 
-  // 2) Lee datos (ya validados) desde el formulario
   const data = formDataToObject(form);
   const contact = {
     name:  (data.contact_name || '').trim(),
     email: (data.contact_email || '').trim(),
     phone: (data.contact_phone || '').trim(),
   };
-  // Guarda contacto para precargar después
   saveContact(contact);
 
-  // 3) Ahora sí bloqueamos UI y ponemos “Creando…”
   creating = true;
   setBtnLoading(S.btnCreate, true, "Creando…");
   disableFormInputs(true);
   lockHeader(true);
   lockNavigation(true);
 
-  // Validación extra: contacto
   const emailOk = /^\S+@\S+\.\S+$/.test(contact.email);
   if (!contact.name || !contact.email || !contact.phone || !emailOk) {
     showBanner('Completa tus datos de contacto (correo válido requerido).', 'warn');
     setBtnLoading(S.btnCreate, false, "", "Crear orden");
-    disableFormInputs(false);
-    lockHeader(false);
-    lockNavigation(false);
+    disableFormInputs(false); lockHeader(false); lockNavigation(false);
     creating = false;
     return;
   }
@@ -516,9 +523,13 @@ async function createOrder() {
       body: JSON.stringify({
         service_id: currentService.id,
         contact,
-        form_data: data
+        form_data: data,
+        status: 'queued',
+        payment: 'pending',
+        delivery: { channel: null, fileUrl: null }
       })
     });
+
     console.log('[createOrder] /orders OK', order);
     currentOrder = order;
     window.__lastOrderId = order.id;
@@ -528,68 +539,92 @@ async function createOrder() {
       serviceId: currentService.id,
       serviceName: currentService.name,
       createdAt: Date.now(),
-      status: 'pending',
-      payment: null,
-      delivery: null,
-      contact
+      contact,
+      status: 'queued',
+      payment: 'pending',
+      delivery: { channel: null, fileUrl: null }
     });
 
     console.log('[createOrder] POST /payments_init…');
-    await api('payments_init', {
+    const payInit = await api('payments_init', {
       method:'POST',
       body: JSON.stringify({ orderId: order.id })
     });
-    console.log('[createOrder] /payments_init OK');
+    console.log('[createOrder] /payments_init OK', payInit);
 
-    if (!DEBUG) {
-      const status = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
-      renderStatus(status);
-      disableFormInputs(false);
-      lockHeader(false);
-      lockNavigation(false);
-      setBtnLoading(S.btnCreate, false, "", "Crear orden");
-      show(S.status);
+    // === Nuevo flujo controlado por el server ===
+    if (payInit?.mode === 'wompi' && payInit.checkoutUrl) {
+      // Flujo real: redirige al Checkout y termina aquí
+      location.href = payInit.checkoutUrl;
       return;
     }
 
+// ...existing code...
+if (payInit?.mode === 'mock') {
+  if (IS_DEBUG) {
+    // Debug: mostrar simulador y permanecer en el formulario
     if (S.paySim) {
       S.paySim.classList.remove('hidden');
       S.paySim.style.display = 'block';
-      const sim = document.getElementById('simulator');
-      if (sim) { sim.style.display = 'block'; sim.open = true; }
+      const det = document.getElementById('simulator');
+      if (det) det.open = true;
     }
-  } catch (e) {
-    showBanner(e?.message || 'No pudimos crear tu orden. Intenta más tarde o contáctanos por WhatsApp.', 'error', true);
+    // Liberar UI (que el usuario pueda cancelar o cerrar)
     disableFormInputs(false);
     lockHeader(false);
     lockNavigation(false);
+    setBtnLoading(S.btnCreate, false, "Creando…", "Crear orden");
+    // IMPORTANTE: NO navegar a pantalla de estado aquí
+    return;
+  } else {
+    // Producción (sin debug): auto-aprobación rápida (success por defecto)
+    try {
+      await api('payments_confirm', {
+        method:'POST',
+        body: JSON.stringify({ orderId: order.id, scenario: 'success' })
+      });
+    } catch (e) {
+      console.warn('[mock auto-approve] opcional:', e);
+    }
+  }
+}
+// ...existing code...
+
+    // Llegados aquí (mock no debug, o cualquier otro caso),
+    // consultamos el estado y pintamos (dispara confeti si ya está "paid")
+    const status = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
+    renderStatus(status);
+    disableFormInputs(false); lockHeader(false); lockNavigation(false);
+    setBtnLoading(S.btnCreate, false, "", "Crear orden");
+    show(S.status);
+    return;
+
+  } catch (e) {
+    showBanner(e?.message || 'No pudimos crear tu orden. Intenta más tarde o contáctanos por WhatsApp.', 'error', true);
+    disableFormInputs(false); lockHeader(false); lockNavigation(false);
     setBtnLoading(S.btnCreate, false, "", "Crear orden");
   } finally {
     creating = false;
   }
 }
 
-
-// Simulador → confirma pago mock y actualiza UI + historial
+/* =====================
+   Simulador (mock)
+===================== */
 async function confirmPayment(scenario) {
   if (!currentOrder?.id) return;
-
   try {
     await api('payments_confirm', {
       method:'POST',
       body: JSON.stringify({ orderId: currentOrder.id, scenario })
     });
-
     const status = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
     renderStatus(status);
     updateHistoryStatus(currentOrder.id, { status: status.status, payment: status.payment, delivery: status.delivery ?? null });
 
-    // cerramos simulador y desbloqueamos UI
     S.paySim.classList.add('hidden');
     setBtnLoading(S.btnCreate, false, "Crear orden");
-    disableFormInputs(false);
-    lockHeader(false);
-    lockNavigation(false);
+    disableFormInputs(false); lockHeader(false); lockNavigation(false);
 
     show(S.status);
   } catch (e) {
@@ -597,16 +632,53 @@ async function confirmPayment(scenario) {
   }
 }
 
-// ==== Confetti helpers (mínimo) ====
-function prefersReducedMotion(){
+/* =====================
+   Confetti
+===================== */
+const LOG = (...args) => console.log('[CONFETTI]', ...args);
+window.__confettiShown = window.__confettiShown || new Set();
+function prefersReducedMotion() {
   try { return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
   catch { return false; }
 }
+console.log('[CONFETTI] reducedMotion =', prefersReducedMotion());
 
+function triggerConfetti(orderId) {
+  if (prefersReducedMotion()) { LOG('reduced motion: skip'); return; }
+  if (!orderId) { LOG('missing orderId'); return; }
+  if (window.__confettiShown.has(orderId)) { LOG('already shown for', orderId); return; }
+
+  try {
+    console.log('[CONFETTI] trigger for', orderId);
+    const layer = document.createElement('div');
+    layer.className = 'confetti';
+    layer.setAttribute('role', 'presentation');
+    document.body.appendChild(layer);
+
+    const colors = ['#10b981','#0ea5e9','#f59e0b','#ef4444','#6366f1','#14b8a6'];
+    const N = 16;
+    for (let i = 0; i < N; i++) {
+      const d = document.createElement('div');
+      d.className = 'confetti__piece';
+      d.style.left = (Math.random()*100)+'%';
+      d.style.background = colors[i % colors.length];
+      d.style.animationDelay = (Math.random()*0.3)+'s';
+      layer.appendChild(d);
+    }
+
+    window.__confettiShown.add(orderId);
+    LOG('START for', orderId);
+    setTimeout(() => {
+      if (layer && layer.parentNode) layer.parentNode.removeChild(layer);
+      LOG('END for', orderId);
+    }, 1200);
+  } catch (e) {
+    console.warn('[confetti] Error:', e);
+  }
+}
 function normalizePayment(p){
   if (!p) return 'pending';
-  if (typeof p === 'string') return p; // 'paid' | 'rejected' | 'canceled' | 'error'
-  // objeto { status: 'success' | 'insufficient' | 'canceled' | 'error' }
+  if (typeof p === 'string') return p;
   switch (p.status){
     case 'success':      return 'paid';
     case 'insufficient': return 'rejected';
@@ -615,213 +687,19 @@ function normalizePayment(p){
     default:             return 'pending';
   }
 }
-
-const LOG = (...a)=>console.log('[CONFETTI]', ...a);
-window.__confettiShown = window.__confettiShown || new Set();
-
-function triggerConfetti(orderId){
-  if (prefersReducedMotion()) { LOG('reduced motion: skip'); return; }
-  if (!orderId) { LOG('missing orderId'); return; }
-  if (window.__confettiShown.has(orderId)) { LOG('already shown for', orderId); return; }
-
-  const layer = document.createElement('div');
-  layer.className = 'confetti';
-  layer.setAttribute('role','presentation');
-  document.body.appendChild(layer);
-
-  const colors = ['#10b981','#0ea5e9','#f59e0b','#ef4444','#6366f1','#14b8a6'];
-  const N = 16;
-  for (let i=0;i<N;i++){
-    const d = document.createElement('div');
-    d.className = 'confetti__piece';
-    d.style.left = (Math.random()*100)+'%';
-    d.style.background = colors[i % colors.length];
-    d.style.animationDelay = (Math.random()*0.3)+'s';
-    layer.appendChild(d);
-  }
-
-  window.__confettiShown.add(orderId);
-  LOG('START for', orderId);
-
-  setTimeout(()=>{
-    layer.remove();
-    LOG('END for', orderId);
-  }, 1200);
-}
-
-// Hook para probar manualmente desde consola
 window.__confettiTest = function(){
   const id = 'TEST-'+Date.now();
   triggerConfetti(id);
   return id;
 };
 
-document.addEventListener('DOMContentLoaded', ()=>{
-  LOG('ready. reducedMotion=', prefersReducedMotion());
-});
-
-
-
-function humanPaymentLabel(payment) {
-  // acepta string o objeto {status:...}
-  const p = typeof payment === 'string' ? payment : (payment?.status || '');
-  if (p === 'paid' || p === 'success') return '✅ Pago aprobado';
-  if (p === 'rejected' || p === 'insufficient') return '❌ Pago rechazado';
-  if (p === 'canceled') return '❌ Pago cancelado';
-  if (p === 'error') return '❌ Error en el pago';
-  return '⏳ Aún no procesado';
-}
-
-function friendlyMessageFor(order) {
-  // order.payment puede ser string o {status}
-  const p = typeof order.payment === 'string' ? order.payment : (order.payment?.status || null);
-
-  if (p === 'paid' || p === 'success') {
-    return 'Tu pago fue aprobado ✅. En breve pondremos tu solicitud en cola y te avisaremos por correo/WhatsApp cuando esté lista.';
-  }
-  if (p === 'rejected' || p === 'insufficient') {
-    return 'No pudimos procesar el pago ❌. Puedes reintentarlo ahora o elegir otro método desde tu historial.';
-  }
-  if (p === 'canceled') {
-    return 'Cancelaste el pago ❌. Puedes retomarlo cuando quieras desde tu historial.';
-  }
-  if (p === 'error') {
-    return 'Tuvimos un inconveniente técnico ⚠️. Intenta nuevamente en unos minutos o contáctanos por WhatsApp.';
-  }
-  // pending / null / desconocido
-  return 'Tu pago está pendiente ⏳. Si cerraste esta ventana por error, puedes reintentarlo desde tu historial.';
-}
-
-
-
-
-function renderStatus(order) {
-  // --- Badge status mapping (igual a tu lógica) ---
-  const badge = document.getElementById('badge-status');
-  let badgeClass = 'pill warn', badgeText = 'Pago pendiente';
-  if (order.payment === 'paid' || order.payment?.status === 'success') {
-    badgeClass = 'pill success';
-    badgeText = 'Pago aprobado';
-  } else if (
-    order.payment === 'rejected' ||
-    order.payment === 'canceled' ||
-    order.payment === 'error' ||
-    order.payment?.status === 'rejected' ||
-    order.payment?.status === 'canceled' ||
-    order.payment?.status === 'error'
-  ) {
-    badgeClass = 'pill error';
-    badgeText = 'Pago no aprobado';
-  } else if (!order.payment || order.payment === 'pending' || order.payment?.status === 'pending') {
-    badgeClass = 'pill warn';
-    badgeText = 'Pago pendiente';
-  }
-  if (badge) {
-    badge.className = badgeClass;
-    badge.textContent = badgeText;
-  }
-
-  // --- Order ID (short) ---
-  const oid = document.getElementById('order-id');
-  if (oid) oid.textContent = order.id ? String(order.id).slice(0, 8) : '—';
-
-  // --- Service name: prioriza lo que venga con la orden ---
-  const osvc = document.getElementById('order-service');
-  if (osvc) osvc.textContent = order.serviceName || order.service || currentService?.name || 'Trámite';
-
-  // --- Order date ---
-  const odate = document.getElementById('order-date');
-  const ts = order.createdAt || Date.now();
-  if (odate) odate.textContent = new Date(ts).toLocaleString();
-
-  // --- Payment status (friendly) ---
-  const spay = document.getElementById('status-payment');
-  if (spay) spay.textContent = mapPayment(order.payment);
-
-  // --- Delivery status ---
-  const sdel = document.getElementById('status-delivery');
-  if (sdel) sdel.textContent = order.delivery ?? 'Pendiente';
-
-  // --- Breakdown: usa snapshot de la orden si existe ---
-  // Preferencias: order.priceSnapshot -> order.price -> currentService.price
-  const snapPrice = order.priceSnapshot || order.price || currentService?.price || null;
-  const pbase = document.getElementById('price-base');
-  const ptax  = document.getElementById('price-tax');
-  const pfee  = document.getElementById('price-fee');
-  const ptotal= document.getElementById('price-total');
-  if (snapPrice) {
-    if (pbase) pbase.textContent  = pesos(snapPrice.base ?? 0);
-    if (ptax)  ptax.textContent   = pesos(snapPrice.tax  ?? 0);
-    if (pfee)  pfee.textContent   = pesos(snapPrice.fee  ?? 0);
-    if (ptotal)ptotal.textContent = pesos(snapPrice.total?? 0);
-  } else {
-    if (pbase)  pbase.textContent  = '—';
-    if (ptax)   ptax.textContent   = '—';
-    if (pfee)   pfee.textContent   = '—';
-    if (ptotal) ptotal.textContent = '—';
-  }
-
-  // --- Friendly message (con tu mapping de badgeClass) ---
-  const msg = document.getElementById('friendly-message');
-  let friendly = '—';
-  if (badgeClass === 'pill success') {
-    friendly = 'Tu pago fue aprobado ✅. En breve pondremos tu solicitud en cola y te avisaremos por correo/WhatsApp cuando esté lista.';
-  } else if (badgeClass === 'pill warn') {
-    friendly = 'Tu pago está pendiente ⏳. Si cerraste esta ventana, puedes reintentarlo desde tu historial.';
-  } else if (badgeClass === 'pill error') {
-    friendly = 'No pudimos procesar el pago ❌. Puedes reintentarlo ahora o elegir otro método.';
-  }
-  if (msg) msg.textContent = friendly;
-
-  // --- Debug JSON ---
-  const sjson = document.getElementById('status-json');
-  if (sjson) {
-    const pretty = JSON.stringify(order, null, 2);
-    sjson.innerHTML = `<pre>${pretty}</pre>`;
-  }
-
-  // --- Confetti: **una sola** invocación, con dedupe por orden ---
-  const pnorm = normalizePayment(order.payment); // asume que ya tienes esta helper
-  LOG('renderStatus', { id: order.id, pnorm });
-  if (pnorm === 'paid' && order.id) {
-    if (!window.__confettiShown) window.__confettiShown = new Set();
-    if (!window.__confettiShown.has(order.id)) {
-      triggerConfetti(order.id);
-      window.__confettiShown.add(order.id);
-    }
-  }
-
-  // fallback: if no order.contact, try to fetch it from local history by id
-  if (!order.contact && order.id) {
-    try {
-      const items = loadHistory();
-      const h = items.find(x => x.id === order.id);
-      if (h?.contact) order.contact = h.contact;
-    } catch {}
-  }
-  // Contacto
-  const contactEl = document.getElementById('order-contact');
-  let contactText = '—';
-  if (order.contact) {
-    if (order.contact.email && order.contact.phone) {
-      contactText = `${order.contact.email} / ${order.contact.phone}`;
-    } else if (order.contact.email) {
-      contactText = order.contact.email;
-    } else if (order.contact.phone) {
-      contactText = order.contact.phone;
-    }
-  }
-  if (contactEl) contactEl.textContent = contactText;
-
-  // === Hero ===
-  updateHero(order);
-}
-
-// Normaliza el estado de pago a: 'paid' | 'rejected' | 'canceled' | 'error' | 'pending'
+/* =====================
+   Payment state + Hero
+===================== */
 function paymentState(order) {
   const p = order?.payment;
   if (!p) return 'pending';
-  if (typeof p === 'string') return p; // 'paid', 'rejected', 'canceled', 'error', 'pending'
+  if (typeof p === 'string') return p;
   switch (p.status) {
     case 'success':      return 'paid';
     case 'insufficient': return 'rejected';
@@ -831,7 +709,7 @@ function paymentState(order) {
   }
 }
 
-// Actualiza el hero usando SIEMPRE el 'order' recibido
+// ...existing code...
 function updateHero(order) {
   const hero = document.getElementById('status-hero');
   if (!hero) return;
@@ -861,140 +739,270 @@ function updateHero(order) {
     if (heroSub)   heroSub.textContent   = 'Tu pago está pendiente. Si cerraste esta ventana, puedes reintentarlo desde tu historial.';
   }
 
-  const d = new Date(order.createdAt || order.created || Date.now());
+  // Mejora: usar audit.created_at si existe
+  const d = new Date(
+    order?.audit?.created_at ||
+    order.createdAt ||
+    order.created ||
+    Date.now()
+  );
   if (heroDate) heroDate.textContent = d.toLocaleString('es-CO');
 }
+// ...existing code...
 
-// =====================
-// Events
-// =====================
-S.btnReload.onclick = () => { loadServices(); };
-S.btnHistory.onclick = () => { S.historyWrap.scrollIntoView({behavior:'smooth'}); };
-S.btnClearHistory.onclick = () => { localStorage.removeItem(LS_KEY); renderHistory(); };
+/* =====================
+   Render Status (dispara confeti)
+===================== */
+// ...existing code...
+function renderStatus(order) {
+  // Actualiza hero dinámico (antes de calcular badge para consistencia)
+  updateHero(order);
 
-S.btnBack.onclick = () => show(S.list);
-S.btnRetry.onclick = () => { show(S.list); loadServices(); };
+  // Badge
+  const badge = document.getElementById('badge-status');
+  let badgeClass = 'pill warn', badgeText = 'Pago pendiente';
+  if (order.payment === 'paid' || order.payment?.status === 'success') {
+    badgeClass = 'pill success'; badgeText = 'Pago aprobado';
+  } else if (
+    order.payment === 'rejected' ||
+    order.payment === 'canceled' ||
+    order.payment === 'error' ||
+    order.payment?.status === 'rejected' ||
+    order.payment?.status === 'canceled' ||
+    order.payment?.status === 'error' ||
+    order.payment?.status === 'insufficient' // <-- agregado para reflejar fondos insuficientes
+  ) {
+    badgeClass = 'pill error'; badgeText = 'Pago no aprobado';
+  } else if (!order.payment || order.payment === 'pending' || order.payment?.status === 'pending') {
+    badgeClass = 'pill warn'; badgeText = 'Pago pendiente';
+  }
+  if (badge) { badge.className = badgeClass; badge.textContent = badgeText; }
+// ...existing code...
 
-S.btnCreate.onclick = (e) => { 
-  console.log('click crear orden');
-  e.preventDefault(); 
-  createOrder().catch(err=>alert(err.message)); 
+  // Order ID
+  const oid = document.getElementById('order-id');
+  if (oid) oid.textContent = order.id ? String(order.id).slice(0, 8) : '—';
+
+  // Service
+  const osvc = document.getElementById('order-service');
+  if (osvc) osvc.textContent = order.serviceName || order.service || currentService?.name || 'Trámite';
+
+  // Date
+  const odate = document.getElementById('order-date');
+  const ts = order.createdAt || Date.now();
+  if (odate) odate.textContent = new Date(ts).toLocaleString();
+
+  // Delivery status
+  const sdel = document.getElementById('status-delivery');
+  if (sdel) {
+    if (order.status === 'delivered') {
+      const ch = order.delivery && order.delivery.channel ? order.delivery.channel : 'entrega';
+      sdel.textContent = `Entregado (${ch})`;
+    } else {
+      sdel.textContent = 'Pendiente';
+    }
+  }
+
+  // Price breakdown
+  const snapPrice = order.priceSnapshot || order.price || currentService?.price || null;
+  const pbase = document.getElementById('price-base');
+  const ptax  = document.getElementById('price-tax');
+  const pfee  = document.getElementById('price-fee');
+  const ptotal= document.getElementById('price-total');
+  if (snapPrice) {
+    if (pbase) pbase.textContent  = pesos(snapPrice.base ?? 0);
+    if (ptax)  ptax.textContent   = pesos(snapPrice.tax  ?? 0);
+    if (pfee)  pfee.textContent   = pesos(snapPrice.fee  ?? 0);
+    if (ptotal)ptotal.textContent = pesos(snapPrice.total?? 0);
+  } else {
+    if (pbase)  pbase.textContent  = '—';
+    if (ptax)   ptax.textContent   = '—';
+    if (pfee)   pfee.textContent   = '—';
+    if (ptotal) ptotal.textContent = '—';
+  }
+
+  // Friendly message
+  const msg = document.getElementById('friendly-message');
+  let friendly = '—';
+  if (badgeClass === 'pill success') {
+    friendly = 'Tu pago fue aprobado ✅. En breve pondremos tu solicitud en cola y te avisaremos por correo/WhatsApp cuando esté lista.';
+  } else if (badgeClass === 'pill warn') {
+    friendly = 'Tu pago está pendiente ⏳. Si cerraste esta ventana, puedes reintentarlo desde tu historial.';
+  } else if (badgeClass === 'pill error') {
+    friendly = 'No pudimos procesar el pago ❌. Puedes reintentarlo ahora o elegir otro método.';
+  }
+  if (msg) msg.textContent = friendly;
+
+  // Debug JSON (si existe el bloque)
+  const sjson = document.getElementById('status-json');
+  if (sjson) sjson.innerHTML = `<pre>${JSON.stringify(order, null, 2)}</pre>`;
+
+  // --- Confetti: de-dupe por sesión; en debug permitimos re-disparar ---
+  const pnorm = normalizePayment(order.payment); // "paid" | ...
+  if (pnorm === 'paid' && order.id) {
+    try {
+      const set = (window.__confettiShown = window.__confettiShown || new Set());
+      if (isDebug()) set.delete(order.id);
+      if (!set.has(order.id)) {
+        triggerConfetti(order.id);
+        set.add(order.id);
+      }
+    } catch (e) {
+      console.warn('[confetti] error de dedupe:', e);
+      try { triggerConfetti(order.id); } catch {}
+    }
+  }
+
+  // fallback: contacto desde historial
+  if (!order.contact && order.id) {
+    try {
+      const items = loadHistory();
+      const h = items.find(x => x.id === order.id);
+      if (h?.contact) order.contact = h.contact;
+    } catch {}
+  }
+  const contactEl = document.getElementById('order-contact');
+  let contactText = '—';
+  if (order.contact) {
+    if (order.contact.email && order.contact.phone) contactText = `${order.contact.email} / ${order.contact.phone}`;
+    else if (order.contact.email) contactText = order.contact.email;
+    else if (order.contact.phone) contactText = order.contact.phone;
+  }
+  if (contactEl) contactEl.textContent = contactText;
+
+  // Acciones de certificado (descargar/compartir)
+  const actions = document.getElementById('cert-actions');
+  const dl = document.getElementById('download-cert-link');
+  const wa = document.getElementById('share-wa');
+  const mail = document.getElementById('share-mail');
+  if (actions && dl && wa && mail) {
+    if (order.status === "delivered" && order.delivery?.fileUrl) {
+      const url = order.delivery.fileUrl;
+      dl.href = url; dl.target = '_blank'; dl.rel = 'noopener';
+      const waMsg = `Orden: ${order.id}\nTrámite: ${order.serviceName || ""}\nCertificado listo: ${url}`;
+      wa.href = buildWhatsAppLink(waMsg); wa.target = '_blank'; wa.rel = 'noopener';
+      const subject = encodeURIComponent(`Tu certificado de TrámiteYA - Orden ${order.id}`);
+      const body = encodeURIComponent(`Hola,\n\nAquí tienes tu certificado:\n${url}\n\nGracias por usar TrámiteYA.`);
+      mail.href = `mailto:?subject=${subject}&body=${body}`;
+      actions.style.display = '';
+    } else {
+      actions.style.display = 'none';
+    }
+  }
+
+  // "Sigue tu trámite"
+  const follow = document.getElementById('followup-card');
+  if (follow) follow.style.display = isTerminalOrder(order) ? 'none' : '';
+
+  // WhatsApp contextual
+  setFabWhatsApp(order);
+}
+
+/* =====================
+   Events & Init
+===================== */
+document.addEventListener('DOMContentLoaded', async () => {
+  // Modo debug: muestra/oculta card de detalles técnicos
+  const debugCard = document.getElementById('debug-card');
+  const showDebug = new URLSearchParams(location.search).get('debug') === '1';
+  if (debugCard) debugCard.style.display = showDebug ? 'block' : 'none';
+
+
+  // NUEVO: si regresamos con ?orderId=..., cargar estado y pintar hero dinámico
+  const orderIdFromQS = new URLSearchParams(location.search).get('orderId');
+  if (orderIdFromQS) {
+    try {
+      const st = await api(`orders?id=${encodeURIComponent(orderIdFromQS)}`);
+      renderStatus(st);
+      show(S.status);
+    } catch (e) {
+      showBanner('No se pudo cargar el estado de la orden.', 'error');
+    }
+  }
+  // Header actions
+  if (S.btnReload) {
+    S.btnReload.addEventListener('click', async () => {
+      if (S.btnReload.disabled) return;
+      S.btnReload.disabled = true;
+      try {
+        show(S.list);
+        await loadServices();
+        document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' });
+      } finally { S.btnReload.disabled = false; }
+    });
+  }
+  if (S.btnHistory) {
+    S.btnHistory.addEventListener('click', () => {
+      show(S.list);
+      document.getElementById('history')?.scrollIntoView({ behavior: 'smooth' });
+    });
+  }
+  if (S.btnClearHistory) {
+    S.btnClearHistory.addEventListener('click', () => {
+      localStorage.removeItem(LS_KEY);
+      renderHistory();
+    });
+  }
+  if (S.btnBack)  S.btnBack.addEventListener('click', () => show(S.list));
+  if (S.btnRetry) S.btnRetry.addEventListener('click', () => { show(S.list); loadServices(); });
+  if (S.btnCreate) {
+    S.btnCreate.addEventListener('click', (e) => { e.preventDefault(); createOrder().catch(err => alert(err.message)); });
+  }
+
+  // Simulador mock
+  document.getElementById('pay-sim')?.addEventListener('click', (e)=>{
+    const btn = e.target.closest('[data-sim]');
+    if (!btn) return;
+    const scenario = btn.dataset.sim;
+    confirmPayment(scenario).catch(err=>alert(err.message));
+  });
+
+  // Init principal
+  try { await loadConfig(); setFabWhatsApp(null); } catch { setFabWhatsApp(null); }
+  renderHistory();
+  loadServices();
+  if (typeof loadCatalog === 'function') loadCatalog();
+
+// ...existing code...
+// Mostrar/ocultar simulador según debug
+if (!IS_DEBUG && S.paySim) S.paySim.remove();
+else if (IS_DEBUG && S.paySim) S.paySim.classList.add('hidden');
+// ...existing code...
+});
+
+/* =====================
+   Copiar (data-copy)
+===================== */
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-copy]');
+  if (!btn) return;
+  const sel = btn.getAttribute('data-copy');
+  const el = document.querySelector(sel);
+  if (!el) return;
+
+  try {
+    await navigator.clipboard.writeText(el.innerText.trim());
+    const oldTitle = btn.title, oldSrc = btn.src;
+    btn.title = 'Copiado ✔';
+    if (btn.tagName === 'IMG') btn.src = 'img/copiar.png';
+    setTimeout(() => { btn.title = oldTitle; if (btn.tagName === 'IMG') btn.src = oldSrc; }, 2000);
+  } catch { btn.title = 'Error'; }
+});
+
+// Hook de prueba manual
+window.__confettiTest = function() {
+  const id = 'TEST-'+Date.now();
+  triggerConfetti(id);
+  return id;
 };
 
-// simulador
-document.getElementById('pay-sim')?.addEventListener('click', (e)=>{
-  const btn = e.target.closest('[data-sim]');
-  if (!btn) return;
-  const scenario = btn.dataset.sim;
-  confirmPayment(scenario).catch(err=>alert(err.message));
-});
-
-// =====================
-// Init
-// =====================
-renderHistory();
-loadServices();
-
-const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
-if (!DEBUG && S.paySim) {
-  // Si no es modo debug, elimina el simulador
-  S.paySim.remove();
-} else if (DEBUG && S.paySim) {
-  // Si es modo debug, mantén el simulador oculto por defecto
-  S.paySim.classList.add('hidden');
-}
-
-window.__confettiShown = window.__confettiShown || new Set();
-
-function triggerConfetti(orderId){
-  if (prefersReducedMotion()){ LOG('reduced motion: skip'); return; }
-  if (!orderId){ LOG('missing orderId'); return; }
-  if (window.__confettiShown.has(orderId)){ LOG('already shown for', orderId); return; }
-
-  // create container
-  let layer = document.createElement('div');
-  layer.className = 'confetti';
-  layer.setAttribute('role','presentation');
-  document.body.appendChild(layer);
-
-  // pieces
-  const colors = ['#10b981','#0ea5e9','#f59e0b','#ef4444','#6366f1','#14b8a6'];
-  const N = 16;
-  for (let i=0;i<N;i++){
-    const d = document.createElement('div');
-    d.className = 'confetti__piece';
-    d.style.left = (Math.random()*100)+'%';
-    d.style.background = colors[i % colors.length];
-    d.style.animationDelay = (Math.random()*0.3)+'s';
-    d.style.transform = 'translateY(-20vh) rotate(0deg)';
-    layer.appendChild(d);
-  }
-
-  window.__confettiShown.add(orderId);
-  LOG('START for', orderId);
-
-  // cleanup
-  setTimeout(()=>{
-    if (layer && layer.parentNode){ layer.parentNode.removeChild(layer); }
-    LOG('END for', orderId);
-  }, 1200);
-}
-
-// debug hook to force confetti manually from console
-window.__confettiTest = function(){
-  const id = 'TEST-'+Date.now();
-  triggerConfetti(id);
-  return id;
-}
-
-
-document.addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-copy]');
-  if (!btn) return;
-  const sel = btn.getAttribute('data-copy');
-  const el = document.querySelector(sel);
-  if (!el) return;
-
-  try {
-    await navigator.clipboard.writeText(el.innerText.trim());
-    const oldTitle = btn.title;
-    const oldSrc = btn.src;
-    btn.title = 'Copiado ✔';
-    btn.src = 'img/copiar.png'; // necesitas un ícono de check pequeño (o reusar el verde de Pago aprobado)
-    setTimeout(() => {
-      btn.title = oldTitle;
-      btn.src = oldSrc;
-    }, 2000);
-  } catch {
-    btn.title = 'Error';
-  }
-});
-// debug hook to force confetti manually from console
-window.__confettiTest = function(){
-  const id = 'TEST-'+Date.now();
-  triggerConfetti(id);
-  return id;
-}
-
-
-document.addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-copy]');
-  if (!btn) return;
-  const sel = btn.getAttribute('data-copy');
-  const el = document.querySelector(sel);
-  if (!el) return;
-
-  try {
-    await navigator.clipboard.writeText(el.innerText.trim());
-    const oldTitle = btn.title;
-    const oldSrc = btn.src;
-    btn.title = 'Copiado ✔';
-    btn.src = 'img/copiar.png'; // necesitas un ícono de check pequeño (o reusar el verde de Pago aprobado)
-    setTimeout(() => {
-      btn.title = oldTitle;
-      btn.src = oldSrc;
-    }, 2000);
-  } catch {
-    btn.title = 'Error';
+// ====== Snapshot del HTML base del formulario en primer load ======
+document.addEventListener('DOMContentLoaded', () => {
+  const f = document.getElementById('form');
+  if (f) {
+    __FORM_BASE_HTML = f.innerHTML; // snapshot base
+    // Observa cambios y elimina duplicados de #contact-block
+    const obs = new MutationObserver(() => ensureSingleContactBlock());
+    obs.observe(f, { childList: true, subtree: true });
   }
 });
