@@ -33,6 +33,7 @@ git commit -m "Simulador operativo y se presenta correctamente el confeti. Listo
 git push origin ux-premium
 
 
+
 git add .
 Ese . significa “agrega todos los cambios en esta carpeta y subcarpetas”.
 
