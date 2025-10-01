@@ -16,35 +16,83 @@
     <div id="msg" class="muted">Por favor espera…</div>
   </div>
 
+
+<!-- ...existing code... -->
 <script>
 (async () => {
-  const params = new URLSearchParams(location.search);
-  const orderId = params.get('orderId');
-  const scenario = params.get('scenario') || 'success';
-  const fnBase = "http://127.0.0.1:5001/apptramiteya/us-central1";
+  const params     = new URLSearchParams(location.search);
+  const scenario   = params.get('scenario');          // usado solo en mock
+  const orderIdQS  = params.get('orderId');           // mock
+  const txId       = params.get('id') || params.get('transactionId'); // Wompi transactionId
+  const reference  = params.get('reference');         // Wompi reference (orderId-<ts>)
+  const $msg       = document.getElementById('msg');
 
-  const $msg = document.getElementById('msg');
+  // Detectar entorno (emulador vs deploy)
+  const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  const fnBase  = isLocal
+    ? `http://${location.hostname}:5001/apptramiteya/us-central1`
+    : 'https://us-central1-apptramiteya.cloudfunctions.net';
 
-  if (!orderId) {
-    $msg.textContent = "Falta orderId en la URL.";
+  function redirectHome(oid) {
+    window.location.href = `/?orderId=${encodeURIComponent(oid)}`;
+  }
+
+  // 1) Flujo MOCK (mantiene compatibilidad anterior)
+  if (scenario) {
+    if (!orderIdQS) {
+      $msg.textContent = 'Falta orderId (mock).';
+      return;
+    }
+    try {
+      const res = await fetch(`${fnBase}/payments_confirm`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ orderId: orderIdQS, scenario })
+      });
+      const json = await res.json().catch(()=>null);
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
+      redirectHome(orderIdQS);
+    } catch (err) {
+      console.error(err);
+      $msg.textContent = `Error confirmando pago (mock): ${err}`;
+    }
     return;
   }
-  try {
-    const res = await fetch(`${fnBase}/payments_confirm`, {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({ orderId, scenario })
-    });
-    const text = await res.text();
-    if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
 
-    // listo -> volvemos al home con ?orderId=...
-    window.location.href = `/?orderId=${encodeURIComponent(orderId)}`;
+  // 2) Flujo REAL (Wompi sandbox / prod)
+  if (!txId && !reference) {
+    $msg.textContent = 'No vienen parámetros de Wompi (id/reference).';
+    return;
+  }
+
+  try {
+    // Preferimos transactionId; si no, usamos reference
+    let url = `${fnBase}/payments_confirm?`;
+    if (txId) url += `transactionId=${encodeURIComponent(txId)}`;
+    else url += `reference=${encodeURIComponent(reference)}`;
+
+    const res  = await fetch(url, { method:'GET' });
+    const data = await res.json().catch(()=>null);
+    if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+    // orderId devuelto por backend, si no podemos derivarlo desde reference
+    const finalOrderId =
+      data?.orderId ||
+      (reference ? reference.split('-')[0] : '') ||
+      '';
+
+    if (!finalOrderId) {
+      $msg.textContent = 'Confirmado pero no se pudo derivar orderId.';
+      return;
+    }
+    redirectHome(finalOrderId);
   } catch (err) {
     console.error(err);
-    $msg.textContent = `Error confirmando el pago: ${err}`;
+    $msg.textContent = `Error confirmando pago (wompi): ${err}`;
   }
 })();
 </script>
+<!-- ...existing code... -->
+
 </body>
 </html>
