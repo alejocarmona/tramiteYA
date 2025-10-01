@@ -27,6 +27,7 @@ git add web/index.html web/main.js ComandosConsola.txt
 # Haz el commit
 git commit -m "Checkpoint MVP antes de integrar banner de mensajes (alert → banner)"
 git commit -m "con error en retorno wompi y confeti y opciones del emulador de rtas pago"
+git commit -m "Simulador operativo y se presenta correctamente el confeti. Listo para probar Wompi"
 
 # Sube la rama al remoto
 git push origin ux-premium
