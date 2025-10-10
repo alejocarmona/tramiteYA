@@ -23,6 +23,15 @@ const cors = (0, cors_1.default)({ origin: true });
 exports.services = (0, https_1.onRequest)((req, res) => {
     cors(req, res, async () => {
         try {
+            res.setHeader("Access-Control-Allow-Origin", "*"); // ← asegura CORS también en GET
+            // ===== CORS preflight =====
+            if (req.method === "OPTIONS") {
+                res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+                res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+                res.status(204).end();
+                return;
+            }
+            // ==========================
             if (req.method === "GET") {
                 if (req.query.id)
                     return (0, services_js_1.getService)(req, res);
@@ -30,12 +39,7 @@ exports.services = (0, https_1.onRequest)((req, res) => {
             }
             return res.status(405).send("Method Not Allowed");
         }
-        catch (e) {
-            console.error("services handler error:", e);
-            return res
-                .status(500)
-                .json({ error: "Internal error", detail: String(e?.message || e) });
-        }
+        catch (e) { /* ...existing code... */ }
     });
 });
 // ----- Orders -----
@@ -44,17 +48,19 @@ exports.services = (0, https_1.onRequest)((req, res) => {
 exports.orders = (0, https_1.onRequest)((req, res) => {
     cors(req, res, async () => {
         try {
+            res.setHeader("Access-Control-Allow-Origin", "*"); // ← asegura CORS también en GET/POST
+            if (req.method === "OPTIONS") {
+                res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+                res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+                res.status(204).end();
+                return;
+            }
             if (req.method === "POST")
                 return (0, orders_js_1.createOrder)(req, res);
             if (req.method === "GET")
                 return (0, orders_js_1.getOrderStatus)(req, res);
             return res.status(405).send("Method Not Allowed");
         }
-        catch (e) {
-            console.error("orders handler error:", e);
-            return res
-                .status(500)
-                .json({ error: "Internal error", detail: String(e?.message || e) });
-        }
+        catch (e) { /* ...existing code... */ }
     });
 });

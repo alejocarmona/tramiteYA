@@ -1,19 +1,13 @@
 {
-  "functions": {
-    "source": "functions"
-  },
+  "functions": { "source": "functions" },
   "hosting": {
     "public": "web",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
+      { "source": "/payments_init",   "function": "payments_init" },
+      { "source": "/payments_confirm","function": "payments_confirm" },
+      { "source": "/services", "function": "services" },
+      { "source": "/orders", "function": "orders" }
     ]
   },
   "firestore": {
@@ -21,21 +15,10 @@
     "indexes": "firestore.indexes.json"
   },
   "emulators": {
-    "functions": {
-      "host": "0.0.0.0",
-      "port": 5001
-    },
-    "firestore": {
-      "host": "0.0.0.0",
-      "port": 8080
-    },
-    "hosting": {
-      "host": "0.0.0.0",
-      "port": 5000
-    },
-    "ui": {
-      "enabled": true
-    },
+    "functions": { "port": 5001 },
+    "firestore": { "port": 8080 },
+    "hosting": { "port": 5000 },
+    "ui": { "enabled": true },
     "import": "./emulator-data",
     "exportOnExit": "./emulator-data"
   }

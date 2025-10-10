@@ -53,20 +53,27 @@ function buildWhatsAppLink(text) {
 function hasWhatsAppNumber() {
   return !!(APP_CONFIG.whatsappNumber && String(APP_CONFIG.whatsappNumber).trim());
 }
+
 function mapPayment(payment) {
   if (!payment) return '⏳ Aún no procesado';
   if (typeof payment === 'string') {
-    if (payment === 'paid') return '✅ Pago aprobado';
-    if (payment === 'rejected') return '❌ Pago rechazado';
+    if (payment === 'paid' || payment === 'APPROVED' || payment === 'SUCCESS') return '✅ Pago aprobado';
+    if (payment === 'rejected' || payment === 'DECLINED') return '❌ Pago rechazado';
     if (payment === 'canceled') return '❌ Pago cancelado';
-    if (payment === 'error') return '❌ Error en el pago';
+    if (payment === 'error' ) return '❌ Error en el pago';
     return payment;
   }
-  switch (payment.status) {
+  switch (String(payment.status).toLowerCase()) {
     case 'success':      return '✅ Pago aprobado';
-    case 'insufficient': return '⚠️ Fondos insuficientes';
+    case 'approved':     return '✅ Pago aprobado';         // ← por si acaso
+    case 'insufficient': return '⚠️ Fondos insuficientes';    
+    case 'declined':     return '❌ Pago rechazado';        // ← sinónimo
     case 'canceled':     return '❌ Pago cancelado';
-    case 'error':        return '❌ Error en el pago';
+    case 'voided':       return '❌ Pago cancelado';        // ← sinónimo
+    case 'error':        return '❌ Error en el pago';  
+    case 'APPROVED':         return '✅ Pago aprobado';         // ← Wompi
+    case 'DECLINED':     return '❌ Pago rechazado';        // ← Wompi
+    case 'SUCCESS':    return '✅ Pago aprobado';      // ← Wompi
     default:             return payment.status || '—';
   }
 }
@@ -95,14 +102,20 @@ function setFabWhatsApp(orderOrNull) {
 /* =====================
    Config (Functions base URL)
 ===================== */
+// ...existing code...
 function functionUrl(name) {
   const qp = new URLSearchParams(location.search);
   const ENV = qp.get('env');
 
-  // Override por window.__API_BASE
   if (window.__API_BASE) {
     console.info('API base (override):', window.__API_BASE);
     return `${window.__API_BASE}/${name}`;
+  }
+
+  // Preferir same-origin en Hosting (evita CORS)
+  if (!ENV && (location.port === '5000' || location.hostname.endsWith('.web.app') || location.hostname.endsWith('.firebaseapp.com'))) {
+    console.info('API base: (hosting rewrite)');
+    return `/${name}`; // ← same-origin
   }
 
   let base;
@@ -111,15 +124,12 @@ function functionUrl(name) {
   } else if (ENV === 'prod') {
     base = 'https://us-central1-apptramiteya.cloudfunctions.net';
   } else {
-    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.port === '5000') {
-      base = `http://${location.hostname}:5001/apptramiteya/us-central1`;
-    } else {
-      base = 'https://us-central1-apptramiteya.cloudfunctions.net';
-    }
+    base = `http://${location.hostname}:5001/apptramiteya/us-central1`;
   }
   console.info('API base:', base);
   return `${base}/${name}`;
 }
+// ...existing code...
 
 /* =====================
    Helpers DOM & Currency
@@ -676,17 +686,27 @@ function triggerConfetti(orderId) {
     console.warn('[confetti] Error:', e);
   }
 }
+// ...existing code...
 function normalizePayment(p){
   if (!p) return 'pending';
   if (typeof p === 'string') return p;
-  switch (p.status){
+  switch (String(p.status).toLowerCase()){
     case 'success':      return 'paid';
+    case 'paid':         return 'paid';        // ← Wompi
+    case 'approved':     return 'paid';        // ← por si acaso
     case 'insufficient': return 'rejected';
+    case 'rejected':     return 'rejected';    // ← Wompi
+    case 'declined':     return 'rejected';    // ← sinónimo
     case 'canceled':     return 'canceled';
+    case 'voided':       return 'canceled';    // ← sinónimo
     case 'error':        return 'error';
+    case 'APPROVED':     return 'paid';         // ← Wompi
+    case 'DECLINED':     return 'rejected';        // ← Wompi
+    case 'SUCCESS':      return 'paid';        // ← Wompi
     default:             return 'pending';
   }
 }
+// ...existing code...
 window.__confettiTest = function(){
   const id = 'TEST-'+Date.now();
   triggerConfetti(id);
@@ -696,18 +716,28 @@ window.__confettiTest = function(){
 /* =====================
    Payment state + Hero
 ===================== */
+// ...existing code...
 function paymentState(order) {
   const p = order?.payment;
   if (!p) return 'pending';
   if (typeof p === 'string') return p;
-  switch (p.status) {
+  switch (String(p.status).toLowerCase()) {
     case 'success':      return 'paid';
+    case 'paid':         return 'paid';        // ← Wompi
+    case 'approved':     return 'paid';        // ← por si acaso
     case 'insufficient': return 'rejected';
+    case 'rejected':     return 'rejected';    // ← Wompi
+    case 'declined':     return 'rejected';    // ← sinónimo
     case 'canceled':     return 'canceled';
+    case 'voided':       return 'canceled';    // ← sinónimo
     case 'error':        return 'error';
+    case 'APPROVED':     return 'paid';         // ← Wompi
+    case 'DECLINED':     return 'rejected';        // ← Wompi
+    case 'SUCCESS':      return 'paid';        // ← Wompi
     default:             return 'pending';
   }
 }
+// ...existing code...
 
 // ...existing code...
 function updateHero(order) {
@@ -721,8 +751,11 @@ function updateHero(order) {
 
   hero.classList.remove('is-success', 'is-error', 'is-pending');
 
+
+
+  
   const p = paymentState(order);
-  if (p === 'paid') {
+  if (p === 'paid' || p=== 'APPROVED') {
     hero.classList.add('is-success');
     if (heroIcon)  heroIcon.textContent  = '✅';
     if (heroTitle) heroTitle.textContent = '¡Pago aprobado!';
@@ -758,26 +791,37 @@ function renderStatus(order) {
   // Actualiza hero dinámico (antes de calcular badge para consistencia)
   updateHero(order);
 
+  
   // Badge
   const badge = document.getElementById('badge-status');
+ 
+// ...existing code...
+// ...existing code...
   let badgeClass = 'pill warn', badgeText = 'Pago pendiente';
-  if (order.payment === 'paid' || order.payment?.status === 'success') {
+  if (
+    order.payment === 'paid' ||
+    order.payment?.status === 'success' ||
+    order.payment?.status === 'paid' ||
+    String(order.payment?.status || '').toLowerCase() === 'approved' // <-- agregado
+  ) {
     badgeClass = 'pill success'; badgeText = 'Pago aprobado';
   } else if (
     order.payment === 'rejected' ||
     order.payment === 'canceled' ||
     order.payment === 'error' ||
-    order.payment?.status === 'rejected' ||
-    order.payment?.status === 'canceled' ||
-    order.payment?.status === 'error' ||
-    order.payment?.status === 'insufficient' // <-- agregado para reflejar fondos insuficientes
+    String(order.payment?.status || '').toLowerCase() === 'rejected' ||
+    String(order.payment?.status || '').toLowerCase() === 'canceled' ||
+    String(order.payment?.status || '').toLowerCase() === 'error' ||
+    String(order.payment?.status || '').toLowerCase() === 'insufficient'
   ) {
     badgeClass = 'pill error'; badgeText = 'Pago no aprobado';
-  } else if (!order.payment || order.payment === 'pending' || order.payment?.status === 'pending') {
+  } else {
     badgeClass = 'pill warn'; badgeText = 'Pago pendiente';
   }
   if (badge) { badge.className = badgeClass; badge.textContent = badgeText; }
 // ...existing code...
+// ...existing code...
+
 
   // Order ID
   const oid = document.getElementById('order-id');
@@ -803,23 +847,29 @@ function renderStatus(order) {
     }
   }
 
-  // Price breakdown
-  const snapPrice = order.priceSnapshot || order.price || currentService?.price || null;
-  const pbase = document.getElementById('price-base');
-  const ptax  = document.getElementById('price-tax');
-  const pfee  = document.getElementById('price-fee');
-  const ptotal= document.getElementById('price-total');
+  // Price breakdown (scope en #screen-status para evitar IDs duplicados)
+  const root = document.getElementById('screen-status') || document;
+  const snapPrice = order.price_breakdown || order.priceSnapshot || order.price || null;
+  const pbase = root.querySelector('#price-base');
+  const ptax  = root.querySelector('#price-tax');
+  const pfee  = root.querySelector('#price-fee');
+  const ptotal= root.querySelector('#price-total');
+
   if (snapPrice) {
-    if (pbase) pbase.textContent  = pesos(snapPrice.base ?? 0);
-    if (ptax)  ptax.textContent   = pesos(snapPrice.tax  ?? 0);
-    if (pfee)  pfee.textContent   = pesos(snapPrice.fee  ?? 0);
-    if (ptotal)ptotal.textContent = pesos(snapPrice.total?? 0);
+    if (pbase)  pbase.textContent  = pesos(snapPrice.base ?? 0);
+    if (ptax)   ptax.textContent   = pesos(snapPrice.iva  ?? snapPrice.tax ?? 0);
+    if (pfee)   pfee.textContent   = pesos(snapPrice.fee  ?? 0);
+    if (ptotal) ptotal.textContent = pesos(snapPrice.total?? 0);
   } else {
     if (pbase)  pbase.textContent  = '—';
     if (ptax)   ptax.textContent   = '—';
     if (pfee)   pfee.textContent   = '—';
     if (ptotal) ptotal.textContent = '—';
   }
+  // ...existing code...
+
+  updatePriceUI(order);
+
 
   // Friendly message
   const msg = document.getElementById('friendly-message');
@@ -852,6 +902,46 @@ function renderStatus(order) {
       try { triggerConfetti(order.id); } catch {}
     }
   }
+
+
+  //Detalle de cobro con valores cuando el pago fue rechazado?
+// ...existing code...
+function updatePriceUI(order) {
+  const norm = paymentState(order); // 'paid' | 'pending' | 'rejected' | 'canceled' | 'error'
+
+  // Usar el contenedor de la pantalla de estado para evitar colisiones con el form
+  const root = document.getElementById('screen-status') || document;
+
+  // Tomar el card.money que contiene el price-title dentro de la pantalla de estado
+  let box = root.querySelector('#price-box');
+  if (!box) {
+    const titleNode = root.querySelector('#price-title');
+    box = titleNode ? titleNode.closest('.card.money') : null;
+  }
+  if (!box) return;
+
+  const snapPrice = order.price_breakdown || order.priceSnapshot || order.price || null;
+  if (!snapPrice) { box.style.display = 'none'; return; }
+  box.style.display = '';
+
+  const titleEl = root.querySelector('#price-title');
+  const totalLbl = root.querySelector('#price-total-label');
+  const noteEl  = root.querySelector('#price-note');
+
+  if (norm === 'paid') {
+    if (titleEl) titleEl.textContent = 'Detalle de cobro';
+    if (totalLbl) totalLbl.textContent = 'Total pagado';
+    if (noteEl) noteEl.textContent = '';
+  } else {
+    if (titleEl) titleEl.textContent = 'Resumen de costos';
+    if (totalLbl) totalLbl.textContent = 'Total del trámite';
+    if (noteEl)  noteEl.textContent = (norm === 'pending')
+      ? 'Aún no se ha realizado ningún cobro.'
+      : 'No se realizó ningún cobro. Puedes reintentarlo ahora o elegir otro método.';
+  }
+}
+// ...existing code...
+
 
   // fallback: contacto desde historial
   if (!order.contact && order.id) {
@@ -907,18 +997,44 @@ document.addEventListener('DOMContentLoaded', async () => {
   const showDebug = new URLSearchParams(location.search).get('debug') === '1';
   if (debugCard) debugCard.style.display = showDebug ? 'block' : 'none';
 
-
   // NUEVO: si regresamos con ?orderId=..., cargar estado y pintar hero dinámico
-  const orderIdFromQS = new URLSearchParams(location.search).get('orderId');
+   // [CONSERVAR – bloque robusto con reconfirmación y polling]
+  // [ÚNICO bloque de retorno]
+  const q = new URLSearchParams(location.search);
+  const orderIdFromQS = q.get('orderId');
   if (orderIdFromQS) {
     try {
-      const st = await api(`orders?id=${encodeURIComponent(orderIdFromQS)}`);
+      let st = await api(`orders?id=${encodeURIComponent(orderIdFromQS)}`);
       renderStatus(st);
       show(S.status);
+
+      // Reconfirmación + polling si sigue pendiente (Wompi)
+      const isWompi = st?.payment?.mode === 'wompi' || st?.paymentMode === 'wompi';
+      const isPending = (normalizePayment(st.payment) === 'pending');
+      if (isWompi && isPending) {
+        const txId = q.get('id') || q.get('transactionId') || '';
+        const ref  = q.get('reference') || q.get('ref') || '';
+        try {
+          const parts = [];
+          if (txId) parts.push(`transactionId=${encodeURIComponent(txId)}`);
+          if (ref)  parts.push(`reference=${encodeURIComponent(ref)}`);
+          if (parts.length) await api(`payments_confirm?${parts.join('&')}`);
+        } catch (e) { console.warn('[return] reconfirm skip:', e); }
+
+        for (let i = 0; i < 3; i++) {
+          await new Promise(r => setTimeout(r, 600 * (i + 1)));
+          try {
+            st = await api(`orders?id=${encodeURIComponent(orderIdFromQS)}`);
+            renderStatus(st);
+            if (normalizePayment(st.payment) !== 'pending') break;
+          } catch {}
+        }
+      }
     } catch (e) {
       showBanner('No se pudo cargar el estado de la orden.', 'error');
     }
   }
+
   // Header actions
   if (S.btnReload) {
     S.btnReload.addEventListener('click', async () => {
@@ -968,6 +1084,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 if (!IS_DEBUG && S.paySim) S.paySim.remove();
 else if (IS_DEBUG && S.paySim) S.paySim.classList.add('hidden');
 // ...existing code...
+  const f = document.getElementById('form');
+  if (f) {
+    __FORM_BASE_HTML = f.innerHTML; // snapshot base
+    const obs = new MutationObserver(() => ensureSingleContactBlock());
+    obs.observe(f, { childList: true, subtree: true });
+  }
+
+
+
+
+  // ...existing code...
+
 });
 
 /* =====================
@@ -996,13 +1124,3 @@ window.__confettiTest = function() {
   return id;
 };
 
-// ====== Snapshot del HTML base del formulario en primer load ======
-document.addEventListener('DOMContentLoaded', () => {
-  const f = document.getElementById('form');
-  if (f) {
-    __FORM_BASE_HTML = f.innerHTML; // snapshot base
-    // Observa cambios y elimina duplicados de #contact-block
-    const obs = new MutationObserver(() => ensureSingleContactBlock());
-    obs.observe(f, { childList: true, subtree: true });
-  }
-});

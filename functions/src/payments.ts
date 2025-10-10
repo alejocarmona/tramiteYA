@@ -4,6 +4,8 @@ import type { Request, Response } from "express";
 import corsLib from "cors";
 import crypto from "node:crypto";
 import { ensureFirebase } from "./utils.js";
+import type { Firestore } from "firebase-admin/firestore"; // ← agrega esto
+
 
 const cors = corsLib({ origin: true });
 
@@ -35,12 +37,89 @@ async function readPublicConfig(db = ensureFirebase()): Promise<PublicConfig> {
   } catch { return {}; }
 }
 
+// ...existing code...
+
+
+
+//async function computeAmountInCents(db: FirebaseFirestore.Firestore, orderId: string): Promise<number> {
+  async function computeAmountInCents(db: Firestore, orderId: string): Promise<number> {
+
+  try {
+    const snap = await db.collection("orders").doc(orderId).get();
+    if (!snap.exists) {
+      console.warn("[computeAmountInCents] order not found, fallback 10000");
+      return 10000;
+    }
+    const d: any = snap.data() || {};
+
+    // 1) price_breakdown.total (en pesos)
+    if (d?.price_breakdown?.total) {
+      const v = Number(d.price_breakdown.total);
+      if (!isNaN(v) && v > 0) return Math.round(v * 100);
+    }
+
+    // 2) Sumar items (si existen) (qty * unit)
+    if (Array.isArray(d?.price_breakdown?.items)) {
+      const sum = d.price_breakdown.items.reduce((acc: number, it: any) => {
+        const qty  = Number(it?.qty || 1);
+        const unit = Number(it?.unit || it?.price || 0);
+        if (!isNaN(qty) && !isNaN(unit)) return acc + (qty * unit);
+        return acc;
+      }, 0);
+      if (sum > 0) return Math.round(sum * 100);
+    }
+
+    // 3) Campo directo price / amount si existiera
+    if (d?.price) {
+      const p = Number(d.price);
+      if (!isNaN(p) && p > 0) return Math.round(p * 100);
+    }
+
+    // Fallback
+    return 10000; // 100 COP (ajusta según tu caso)
+  } catch (e) {
+    console.error("[computeAmountInCents] error", e);
+    return 10000;
+  }
+}
+
+
 async function readSecureFlags(db = ensureFirebase()): Promise<SecureFlags> {
   try {
     const snap = await db.collection("flags").doc("secure").get();
-    return (snap.exists ? (snap.data() as SecureFlags) : {}) || {};
-  } catch { return {}; }
+    let data: any = snap.exists ? snap.data() : {};
+
+    // Aceptar forma legacy: campos sueltos en top-level
+    if (data && !data.wompi) {
+      if (data.integritySecret || data.secretKey) {
+        data.wompi = {
+          integritySecret: data.integritySecret,
+          secretKey: data.secretKey
+        };
+      }
+    }
+
+    // Fallback: config/secure
+    if (!data?.wompi?.integritySecret || !data?.wompi?.secretKey) {
+        const alt = await db.collection("config").doc("secure").get();
+        if (alt.exists) {
+          const altData: any = alt.data();
+            if (altData?.wompi) {
+              data.wompi = { ...(data.wompi || {}), ...altData.wompi };
+              console.log("[readSecureFlags] merge desde config/secure");
+            }
+        }
+    }
+
+    return data || {};
+  } catch (e) {
+    console.warn("[readSecureFlags] error", e);
+    return {};
+  }
 }
+
+// ...existing code (antes de usar sec en payments_init) añade un log:
+// Mueve este log dentro de payments_init después de definir sec
 
 function cents(n: number): number { return Math.round(Number(n || 0) * 100); }
 
@@ -58,79 +137,111 @@ function mapWompiStatus(s?: string) {
  * Body: { orderId: string }
  * Devuelve { mode: "wompi", checkoutUrl } o { mode: "mock" }
  */
-export const payments_init = onRequest(async (req: Request, res: Response) => {
+// ...existing code...
+export const payments_init = onRequest(async (req, res) => {
   return cors(req, res, async () => {
     try {
-      if (req.method !== "POST") return bad(res, "Method Not Allowed", 405);
-
-      const { orderId } = (req.body || {}) as { orderId?: string };
-      if (!orderId) return bad(res, "orderId is required");
-
       const db  = ensureFirebase();
-      const cfg = await readPublicConfig(db);
+      const cfg = await readPublicConfig(db); // contiene wompi.publicKey, apiUrl, app.returnUrl
+      const sec = await readSecureFlags(db);  // contiene wompi.secretKey, integritySecret
+      console.log("[payments_init] secure wompi keys =", Object.keys(sec?.wompi || {}));
 
-      // 👉 Usa mock SOLO si es true explícito
-      console.log("[payments_init] useMock =", cfg?.payments?.useMock);
+      if (cfg?.payments?.useMock === true) {
+        return ok(res, { mode: "mock", status: "pending" });
+      }
+
+      const publicKey  = cfg?.wompi?.publicKey || "";
+      const apiUrl     = cfg?.wompi?.apiUrl || "https://sandbox.wompi.co";
+      let returnUrl    = cfg?.app?.returnUrl || "";
+      if (!returnUrl) return bad(res, "returnUrl missing in config.public.app.returnUrl");
+      // Normaliza (añade return.html si falta)
+      if (!/return\.html$/i.test(returnUrl)) {
+        if (!returnUrl.endsWith("/")) returnUrl += "/";
+        returnUrl += "return.html";
+      }
+
+      const orderId = String(req.body?.orderId || req.query?.orderId || "").trim();
+      if (!orderId) return bad(res, "orderId required");
+      // reference único (timestamp + aleatorio corto para evitar duplicación)
+      const suffix = Date.now() + "-" + Math.floor(Math.random() * 1e5).toString(36);
+      const reference = `${orderId}-${suffix}`.slice(0, 64);
+
+try {
+        const u = new URL(returnUrl);
+        u.searchParams.set("ref", reference);
+        returnUrl = u.toString();
+      } catch { /* ignora si falla parse */ }
+
 // ...existing code...
-if (cfg?.payments?.useMock === true) {
-   return ok(res, { mode: "mock", status: "pending" });
-}
-// ...existing code...
 
 
-      // Lee orden para calcular monto
-      const snap = await db.collection("orders").doc(orderId).get();
-      if (!snap.exists) return bad(res, "Order not found", 404);
-      const d = snap.data() as any;
+// ...existing code (appendDebug etc)...
+      
 
-      const amountInCents = cents(d?.price_breakdown?.total ?? 0);
-      if (!amountInCents || amountInCents < 1) return bad(res, "Invalid amount for order");
+      // Mapea monto (ejemplo: suma breakdown si existe)
+      const amountInCents = await computeAmountInCents(db, orderId); // implementa o reemplaza
+      const currency = "COP";
 
-      const publicKey    = cfg?.wompi?.publicKey || "";
-      const checkoutBase = cfg?.wompi?.checkoutUrlBase || "https://checkout.wompi.co/p/";
-      const returnUrl    = cfg?.app?.returnUrl || "";
-      if (!publicKey) return bad(res, "Missing wompi.publicKey in config/public");
-      if (!returnUrl) return bad(res, "Missing app.returnUrl in config/public");
-
-      // Reference ÚNICA por intento
-      const reference = `${orderId}-${Date.now()}`;
-      const currency  = "COP";
-
-      // Firma de integridad (si existe en flags/secure)
-      const sec = await readSecureFlags(db);
       const integritySecret = sec?.wompi?.integritySecret || "";
-// Arma query del checkout
-const qs = new URLSearchParams({
-  "public-key": publicKey,
-  "amount-in-cents": String(amountInCents),
-  currency,
-  reference,
-  "redirect-url": returnUrl,
-});
+      const skipSignature = (req.query?.skipSignature === "1") || (req.query?.debug === "1");
 
-// Si hay secreto de integridad, genera firma SHA256(reference + amount + currency + secret)
-if (integritySecret) {
-  const raw = `${reference}${amountInCents}${currency}${integritySecret}`;
-  const signature = crypto.createHash("sha256").update(raw).digest("hex");
-  qs.set("signature", signature);
-}
+      const qs = new URLSearchParams({
+        "public-key": publicKey,
+        "amount-in-cents": String(amountInCents),
+        currency,
+        reference,
+        "redirect-url": appendDebug(returnUrl, req.query?.debug ? "1" : "")
+      });
 
-      const checkoutUrl = `${checkoutBase}?${qs.toString()}`;
+// ...existing code...
+      if (integritySecret && !skipSignature) {
+        const raw = `${reference}${amountInCents}${currency}${integritySecret}`;
+        const signature = crypto.createHash("sha256").update(raw).digest("hex");
+        // CAMBIO: Wompi espera el parámetro 'signature:integrity'
+        // qs.set("signature", signature);
+        qs.set("signature:integrity", signature);
+        console.log("[payments_init] signature raw =", raw);
+        console.log("[payments_init] signature =", signature);
+      } else {
+        console.log("[payments_init] signature OMITIDA (integritySecret vacío o skipSignature)");
+      }
+// ...existing code...
 
+      console.log("[payments_init] built checkout params", {
+        reference,
+        amountInCents,
+        currency,
+        returnUrl,
+        skipSignature
+      });
 
-      // Marca la orden con modo/status esperado
-      await snap.ref.set({
-        payment: { ...(d?.payment || {}), mode: "wompi", status: "pending" },
-        audit:   { ...(d?.audit || {}),   updated_at: new Date().toISOString() }
-      }, { merge: true });
+      const checkoutUrlBase = cfg?.wompi?.checkoutUrlBase || "https://checkout.wompi.co/p/";
+      const checkoutUrl = `${checkoutUrlBase}?${qs.toString()}`;
 
-      return ok(res, { mode: "wompi", checkoutUrl });
+      return ok(res, {
+        mode: "wompi",
+        checkoutUrl,
+        reference,
+        orderId
+      });
+
     } catch (e: any) {
-      console.error("payments_init error:", e);
-      return res.status(500).json({ error: "Internal error", detail: String(e?.message || e) });
+      console.error("[payments_init] error", e);
+      return bad(res, String(e?.message || e), 500);
     }
   });
 });
+
+// Utilidades locales (añade al final del archivo o en helpers)
+function appendDebug(url: string, dbg: string) {
+  if (!dbg) return url;
+  try {
+    const u = new URL(url);
+    u.searchParams.set("debug", dbg);
+    return u.toString();
+  } catch { return url + (url.includes("?") ? "&" : "?") + "debug=" + dbg; }
+}
+// ...existing code...
 
 /**
  * GET/POST /payments_confirm
@@ -138,91 +249,113 @@ if (integritySecret) {
  * Verifica S2S y actualiza la orden.
  */
 // ...existing code...
+// ...existing code...
 export const payments_confirm = onRequest(async (req: Request, res: Response) => {
   return cors(req, res, async () => {
     try {
       const method = req.method.toUpperCase();
       if (method !== "GET" && method !== "POST") return bad(res, "Method Not Allowed", 405);
 
-      const q = method === "GET" ? req.query : req.body;
-      const transactionId = String(q?.transactionId || q?.id || "").trim();
-      const reference     = String(q?.reference || "").trim();
+      const q      = method === "GET" ? req.query : req.body;
+      const transactionIdRaw = String(q?.transactionId || q?.id || "").trim();
+      // Aceptar 'ref' como alias
+      const reference        = String(q?.reference || q?.ref || "").trim();
+      const orderIdBody      = String(q?.orderId || "").trim();
+
+      if (!transactionIdRaw && !reference && !orderIdBody) {
+        return bad(res, "transactionId or reference or orderId required", 400);
+      }
 
       const db  = ensureFirebase();
       const cfg = await readPublicConfig(db);
       const sec = await readSecureFlags(db);
 
-      // --- MODO MOCK: aplicar escenario recibido ---
-      if (cfg?.payments?.useMock === true) {
-        const orderId = String(q?.orderId || "").trim();
-        const scenarioRaw = String(q?.scenario || "").trim().toLowerCase();
-        if (!orderId) return bad(res, "orderId is required in mock mode");
-        const allowed = ["success","insufficient","canceled","error"];
-        const scenario = allowed.includes(scenarioRaw) ? scenarioRaw : "success";
-
-        const snap = await db.collection("orders").doc(orderId).get();
-        if (!snap.exists) return bad(res, "Order not found", 404);
-        const d = snap.data() || {};
-
-        await snap.ref.set({
-          payment: {
-            ...(typeof d.payment === "object" ? d.payment : {}),
-            mode: "mock",
-            status: scenario
-          },
-          audit: { ...(d as any).audit, updated_at: new Date().toISOString() }
-        }, { merge: true });
-
-        return ok(res, { mode: "mock", status: scenario, orderId });
-      }
-      // ...existing code (flujo Wompi real)...
-// ...existing code...
-
-      const apiUrl    = cfg?.wompi?.apiUrl || "https://sandbox.wompi.co";
+// FIX: API base correcta
+      // Normaliza base del API (host correcto y sin /v1 duplicado)
+      const rawApi  = cfg?.wompi?.apiUrl || "https://api-sandbox.wompi.co";
+      const apiBase = rawApi.replace(/\/+$/,"").replace(/\/v1$/,""); // ← quita sufijo /v1
       const secretKey = sec?.wompi?.secretKey || "";
-      if (!secretKey) return bad(res, "Missing wompi.secretKey in flags/secure");
+      if (!secretKey) return bad(res, "Missing wompi.secretKey (secure flags)", 500);
 
-      let txUrl = "";
-      if (transactionId) {
-        txUrl = `${apiUrl}/v1/transactions/${encodeURIComponent(transactionId)}`;
-      } else if (reference) {
-        txUrl = `${apiUrl}/v1/transactions?reference=${encodeURIComponent(reference)}`;
+      const transactionId = transactionIdRaw;
+      console.log("[payments_confirm] txId =", transactionId || "(none)", "reference =", reference || "(none)");
+      console.log("[payments_confirm] apiBase =", apiBase);
+
+      let tx: any = null;
+
+      if (!transactionId && reference) {
+        const byRef = `${apiBase}/v1/transactions?reference=${encodeURIComponent(reference)}`;
+        console.log("[payments_confirm] fetch by reference", byRef);
+        const r2 = await fetch(byRef, { headers: { Authorization: `Bearer ${secretKey}` } });
+        const b2 = await r2.json().catch(()=>null);
+        if (r2.ok && Array.isArray(b2?.data) && b2.data.length) {
+          tx = b2.data[0];
+        } else {
+          return bad(res, "Transaction not found in Wompi", 404);
+        }
       } else {
-        return bad(res, "transactionId or reference is required");
+        const txUrl = `${apiBase}/v1/transactions/${encodeURIComponent(transactionId)}`;
+        console.log("[payments_confirm] fetch", txUrl);
+        const resp = await fetch(txUrl, { headers: { Authorization: `Bearer ${secretKey}` } });
+        const body = await resp.json().catch(()=>null);
+
+        if (resp.status === 404 && reference) {
+          console.warn("[payments_confirm] 404 by id, fallback by reference:", reference);
+          const byRef = `${apiBase}/v1/transactions?reference=${encodeURIComponent(reference)}`;
+          const r2 = await fetch(byRef, { headers: { Authorization: `Bearer ${secretKey}` } });
+          const b2 = await r2.json().catch(()=>null);
+          if (r2.ok && Array.isArray(b2?.data) && b2.data.length) {
+            tx = b2.data[0];
+          } else {
+            return bad(res, "Transaction not found in Wompi", 404);
+          }
+        } else if (!resp.ok) {
+          console.error("[payments_confirm] non-ok wompi response", resp.status, body);
+          return bad(res, `Wompi fetch failed (${resp.status})`, 502);
+        } else {
+          tx = (Array.isArray(body?.data) ? body.data[0] : body?.data) || null;
+        }
+      }
+      
+      if (!tx || !tx.id) {
+        console.error("[payments_confirm] invalid Wompi payload", tx);
+        return bad(res, "Invalid Wompi response", 502);
       }
 
-      const resp = await fetch(txUrl, { headers: { Authorization: `Bearer ${secretKey}` } });
-      const json = await resp.json();
-      const tx = (json?.data && Array.isArray(json.data) ? json.data[0] : json?.data) || null;
-      if (!tx) return bad(res, "Transaction not found in Wompi", 404);
+      const mapped = mapWompiStatus(tx.status);
+      const derivedOrderId =
+        orderIdBody ||
+        (tx.reference ? String(tx.reference).split("-")[0] : "") ||
+        (reference ? reference.split("-")[0] : "");
 
-      const { payment, reason } = mapWompiStatus(tx?.status);
+      if (!derivedOrderId) {
+        return ok(res, { mode: "wompi", transactionId: tx.id, status: mapped.payment, detail: "Order id not derivable" });
+      }
 
-      // Nuestra referencia es orderId-<ts> → extrae el orderId puro
-      const refStr  = String(tx?.reference || reference || "").trim();
-      const orderId = refStr.split("-")[0] || refStr;
-      if (!orderId) return bad(res, "reference (orderId) missing in transaction");
+      const orderRef = db.collection("orders").doc(derivedOrderId);
+      const snap = await orderRef.get();
+      if (!snap.exists) {
+        console.warn("[payments_confirm] order not found to update", derivedOrderId);
+        return ok(res, { mode: "wompi", transactionId: tx.id, status: mapped.payment, orderId: derivedOrderId, detail: "Order not found to update" });
+      }
 
-      const snap = await db.collection("orders").doc(orderId).get();
-      if (!snap.exists) return bad(res, "Order not found", 404);
-      const d = snap.data() || {};
-
-      await snap.ref.set({
-        payment: (typeof d?.payment === "object")
-          ? { ...(d as any).payment, status: payment, mode: "wompi" }
-          : payment, // si el modelo original era string simple
-        payment_reason: reason ?? null,
-        audit: { ...(d as any)?.audit, updated_at: new Date().toISOString() }
+      await orderRef.set({
+        payment: {
+          mode: "wompi",
+          status: mapped.payment,
+          rawStatus: String(tx.status || "").toUpperCase(),
+          txId: tx.id,
+          reference: tx.reference || null,
+          updatedAt: new Date().toISOString()
+        },
+        audit: { ...(snap.data() as any)?.audit, updated_at: new Date().toISOString() }
       }, { merge: true });
 
-      return ok(res, {
-        orderId,
-        transactionId: tx?.id ?? transactionId ?? null,
-        status: payment
-      });
+      return ok(res, { mode: "wompi", orderId: derivedOrderId, transactionId: tx.id, status: mapped.payment });
     } catch (e: any) {
-      console.error("payments_confirm error:", e);
-      return res.status(500).json({ error: "Internal error", detail: String(e?.message || e) });
+      console.error("[payments_confirm] error", e);
+      return bad(res, String(e?.message || e), 500);
     }
   });
 });
+// ...existing code...

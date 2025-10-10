@@ -486,12 +486,18 @@ body {
      
         <div class="section-content">
           <p class="form-section-help" style="margin:4px 0 8px">Este es el valor a pagar.</p><p></p>
-          <div class="card money" id="form-money">
-            <div class="money-row"><span>Valor base</span><strong id="form-price-base">—</strong></div>
-            <div class="money-row"><span>IVA</span><strong id="form-price-tax">—</strong></div>
-            <div class="money-row"><span>Servicio</span><strong id="form-price-fee">—</strong></div>
-            <div class="money-row total"><span>Total</span><strong id="form-price-total">—</strong></div>
-          </div>
+    <div class="card money" id="price-box">
+      <div class="title" id="price-title">Detalle de cobro</div>
+      <div class="row money-row"><span>Valor base</span><strong id="price-base">—</strong></div>
+      <div class="row money-row"><span>IVA</span><strong id="price-tax">—</strong></div>
+      <div class="row money-row"><span>Servicio</span><strong id="price-fee">—</strong></div>
+      <div class="hr"></div>
+      <div class="row total">
+        <div><strong id="price-total-label">Total</strong></div>
+        <div id="price-total"></div>
+      </div>
+      <div id="price-note" class="muted" style="margin-top:6px"></div>
+    </div>
         </div>
       </div>
       <div class="hr" style="border-top:1px solid #eee"></div>
@@ -611,12 +617,17 @@ body {
     </div> -->
 
     <div class="card money">
-      <div class="title">Detalle de cobro</div>
+      <div class="title" id="price-title">Detalle de cobro</div>
       <div class="row money-row"><span>Valor base</span><strong id="price-base">—</strong></div>
       <div class="row money-row"><span>IVA</span><strong id="price-tax">—</strong></div>
       <div class="row money-row"><span>Servicio</span><strong id="price-fee">—</strong></div>
       <div class="hr"></div>
-      <div class="row money-row total"><span>Total</span><strong id="price-total">—</strong></div>
+      <div class="row total">
+  <div><strong id="price-total-label">Total</strong></div>
+  <div id="price-total"></div>
+</div>
+
+<div id="price-note" class="muted" style="margin-top:6px"></div>
     </div>
 
 <!-- Acciones de certificado (solo visible cuando delivered) -->

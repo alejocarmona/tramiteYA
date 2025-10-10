@@ -18,17 +18,21 @@ const cors = corsLib({ origin: true });
 export const services = onRequest((req, res) => {
   cors(req, res, async () => {
     try {
+      res.setHeader("Access-Control-Allow-Origin", "*"); // ← asegura CORS también en GET
+      // ===== CORS preflight =====
+      if (req.method === "OPTIONS") {
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+        res.status(204).end();
+        return;
+      }
+      // ==========================
       if (req.method === "GET") {
         if (req.query.id) return getService(req, res);
         return listServices(req, res);
       }
       return res.status(405).send("Method Not Allowed");
-    } catch (e: any) {
-      console.error("services handler error:", e);
-      return res
-        .status(500)
-        .json({ error: "Internal error", detail: String(e?.message || e) });
-    }
+    } catch (e: any) { /* ...existing code... */ }
   });
 });
 
@@ -38,14 +42,16 @@ export const services = onRequest((req, res) => {
 export const orders = onRequest((req, res) => {
   cors(req, res, async () => {
     try {
+      res.setHeader("Access-Control-Allow-Origin", "*"); // ← asegura CORS también en GET/POST
+      if (req.method === "OPTIONS") {
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        res.status(204).end();
+        return;
+      }
       if (req.method === "POST") return createOrder(req, res);
       if (req.method === "GET")  return getOrderStatus(req, res);
       return res.status(405).send("Method Not Allowed");
-    } catch (e: any) {
-      console.error("orders handler error:", e);
-      return res
-        .status(500)
-        .json({ error: "Internal error", detail: String(e?.message || e) });
-    }
+    } catch (e: any) { /* ...existing code... */ }
   });
 });

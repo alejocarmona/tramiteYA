@@ -56,6 +56,32 @@ Recurrentemene al usar Github copilot, sucede que duplica codigo al tratar de so
 
 
 @workspace  
+En el modo debug=0, cuando se hace el llamado a Wompi, una vez se selecciona la opciond de regresar al comercio, 
+estamos logrando regresar a la nuestra aplicación pero sin importar la opcion de estado de pago que se selccion en Wompi
+siempre se esta mostrando el hero de "Pago pendiente". Los estados que identico devuelve wompi son: APPROVED, DECLINED,SUCCESS (para simular error).
+Analiza en busqueda de las causas raices de este error E Identifica que micro cambios pequeños y quirurgicos se deben 
+aplicar y exactamente en que archivos y en que posicion, para lograr coherencia con el estado de wompi y la aplicación.
+Ten en cuenta que antes de presionar el boton de regresar al comercio, esto se registra en Network:
+
+Al regresar al comercio desde wompi, se esta presentando este error: {"error":"Transaction not found in Wompi"} y la orden se crea con estado: "Pago pendiente",
+que coincide con estado seleccionado en Wompi.
+En consola del navegador se registra esto:
+:5001/apptramiteya/u…760024928810-1qtq:1 
+ Failed to load resource: the server responded with a status of 404 (Not Found)
+
+Al regresar al comercio desde wompi, con un estado de "Pago rechazado" se esta mostrando "Detalle de cobro" con los valores del tramite.
+Se deberia cambiar el titulo “Detalle de cobro” y "Total", de esta forma:
+-Pagado: título “Detalle de cobro”, etiqueta del total “Total pagado”.
+-Pendiente / Rechazado / Cancelado / Error / Otro: título “Resumen de costos”, etiqueta del total “Total del trámite (No cobrado).
+Analiza en busqueda de las causas raices de este error E Identifica que micro cambios pequeños y quirurgicos se deben 
+aplicar para realizar este ajuste:
+Tu salida debe seguir esta estructura:
+Archivos:
+funcion:
+linea:
+problema evidenciado:
+descripcion del cambio quirurgico a realizar.
+
 En el simulador de pagos tenemos 4 posibles opciones: "Pago exitoso", "Saldo insuficiente", "Cancelador por el usuario", "Error técnico".
 La seccion de status-hero debe ser coherente con la opcion de pago seleccionado en el simulador, o por wompi. Pero en este momento status-hero esta quemado con el estado de "¡Pago aprobado!".
 Analiza porque la sesccion status-hero siempre se esta mostrando como: ¡Pago aprobado!, confirma si es porque esta quemado.
