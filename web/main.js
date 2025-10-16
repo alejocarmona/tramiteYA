@@ -434,20 +434,25 @@ async function openForm(id) {
   if (!dyn) { dyn = document.createElement('div'); dyn.id = 'dyn-fields'; form.appendChild(dyn); }
   else { dyn.innerHTML = ''; }
 
-  const data = await api(`services?id=${encodeURIComponent(id)}`);
+ const data = await api(`services?id=${encodeURIComponent(id)}`);
   const svc = data.item;
   currentService = svc;
+  window.__CURRENT_SERVICE = svc; // ← agregado: disponible para updatePriceUI
 
+  
   S.svcHead.innerHTML = `<div class="title">${svc.name}</div>`;
-  const price = svc.price || { base:0, tax:0, fee:0, total:0 };
-  const fpb = document.getElementById('form-price-base');
-  const fpt = document.getElementById('form-price-tax');
-  const fpf = document.getElementById('form-price-fee');
+  // ...existing code...
+  const price = svc.price || { base:0, iva:0, fee:0, total:0 };
+  const fpb   = document.getElementById('form-price-base');
+  const fpt   = document.getElementById('form-price-tax');
+  const fpf   = document.getElementById('form-price-fee');
   const fptot = document.getElementById('form-price-total');
-  if (fpb)  fpb.textContent  = pesos(price.base||0);
-  if (fpt)  fpt.textContent  = pesos(price.tax||0);
-  if (fpf)  fpf.textContent  = pesos(price.fee||0);
-  if (fptot)fptot.textContent= pesos(price.total||0);
+
+  if (fpb)   fpb.textContent   = pesos(price.base || 0);
+  if (fpt)   fpt.textContent   = pesos((price.iva ?? price.tax) || 0);
+  if (fpf)   fpf.textContent   = pesos(price.fee  || 0);
+  if (fptot) fptot.textContent = pesos(price.total|| 0);
+  // ...existing code...
 
   (svc.fields || []).forEach(f => {
     const wrap = document.createElement('div');
@@ -854,7 +859,6 @@ function renderStatus(order) {
   const ptax  = root.querySelector('#price-tax');
   const pfee  = root.querySelector('#price-fee');
   const ptotal= root.querySelector('#price-total');
-
   if (snapPrice) {
     if (pbase)  pbase.textContent  = pesos(snapPrice.base ?? 0);
     if (ptax)   ptax.textContent   = pesos(snapPrice.iva  ?? snapPrice.tax ?? 0);
@@ -866,9 +870,9 @@ function renderStatus(order) {
     if (pfee)   pfee.textContent   = '—';
     if (ptotal) ptotal.textContent = '—';
   }
-  // ...existing code...
 
-  updatePriceUI(order);
+  // CAMBIO: no pasar el objeto order “crudo”; usar el contexto esperado
+  updatePriceUI({ order });   // antes: updatePriceUI(order)
 
 
   // Friendly message
@@ -905,41 +909,92 @@ function renderStatus(order) {
 
 
   //Detalle de cobro con valores cuando el pago fue rechazado?
-// ...existing code...
-function updatePriceUI(order) {
-  const norm = paymentState(order); // 'paid' | 'pending' | 'rejected' | 'canceled' | 'error'
+// REEMPLAZAR: función updatePriceUI por una versión multi-contexto
+function updatePriceUI(ctx) {
+  // ctx puede ser: { order } o { service }
+  const order   = ctx?.order || null;
+  const service = ctx?.service || window.__CURRENT_SERVICE || null;
 
-  // Usar el contenedor de la pantalla de estado para evitar colisiones con el form
-  const root = document.getElementById('screen-status') || document;
+  // Helpers
+  const pesos = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(Number(n||0));
 
-  // Tomar el card.money que contiene el price-title dentro de la pantalla de estado
-  let box = root.querySelector('#price-box');
-  if (!box) {
-    const titleNode = root.querySelector('#price-title');
-    box = titleNode ? titleNode.closest('.card.money') : null;
-  }
-  if (!box) return;
+  // 1) FORM: precios del servicio seleccionado
+  (function paintForm(){
+    const root = document.getElementById('screen-form');
+    if (!root) return;
+    const fPrice = service?.price_breakdown || service?.price || null;
+    const box = root.querySelector('#price-box');
+    if (!box) return;
 
-  const snapPrice = order.price_breakdown || order.priceSnapshot || order.price || null;
-  if (!snapPrice) { box.style.display = 'none'; return; }
-  box.style.display = '';
+    const titleEl = root.querySelector('#price-title');
+    const baseEl  = root.querySelector('#price-base');
+    const ivaEl   = root.querySelector('#price-tax');
+    const feeEl   = root.querySelector('#price-fee');
+    const totLbl  = root.querySelector('#price-total-label');
+    const totEl   = root.querySelector('#price-total');
+    const noteEl  = root.querySelector('#price-note');
 
-  const titleEl = root.querySelector('#price-title');
-  const totalLbl = root.querySelector('#price-total-label');
-  const noteEl  = root.querySelector('#price-note');
+    if (!fPrice) {
+      if (baseEl) baseEl.textContent = '—';
+      if (ivaEl)  ivaEl.textContent  = '—';
+      if (feeEl)  feeEl.textContent  = '—';
+      if (totEl)  totEl.textContent  = '—';
+      return;
+    }
+    // En el formulario siempre mostramos “Desglose/Detalle” y “Total a pagar”
+    if (titleEl) titleEl.textContent = 'Desglose de precios';
+    if (totLbl)  totLbl.textContent  = 'Total a pagar';
+    if (noteEl)  noteEl.textContent  = '';
 
-  if (norm === 'paid') {
-    if (titleEl) titleEl.textContent = 'Detalle de cobro';
-    if (totalLbl) totalLbl.textContent = 'Total pagado';
-    if (noteEl) noteEl.textContent = '';
-  } else {
-    if (titleEl) titleEl.textContent = 'Resumen de costos';
-    if (totalLbl) totalLbl.textContent = 'Total del trámite';
-    if (noteEl)  noteEl.textContent = (norm === 'pending')
-      ? 'Aún no se ha realizado ningún cobro.'
-      : 'No se realizó ningún cobro. Puedes reintentarlo ahora o elegir otro método.';
-  }
+    if (baseEl) baseEl.textContent = pesos(fPrice.base ?? 0);
+    if (ivaEl)  ivaEl.textContent  = pesos(fPrice.iva  ?? fPrice.tax ?? 0);
+    if (feeEl)  feeEl.textContent  = pesos(fPrice.fee  ?? 0);
+    if (totEl)  totEl.textContent  = pesos(fPrice.total?? 0);
+  })();
+
+  // 2) ESTADO: precios tomados de la orden
+  (function paintStatus(){
+    const root = document.getElementById('screen-status');
+    if (!root) return;
+    const sPrice = order?.price_breakdown || order?.priceSnapshot || order?.price || null;
+
+    const titleEl = root.querySelector('#price-title');
+    const baseEl  = root.querySelector('#price-base');
+    const ivaEl   = root.querySelector('#price-tax');
+    const feeEl   = root.querySelector('#price-fee');
+    const totLbl  = root.querySelector('#price-total-label');
+    const totEl   = root.querySelector('#price-total');
+    const noteEl  = root.querySelector('#price-note');
+
+    if (!sPrice) {
+      if (baseEl) baseEl.textContent = '—';
+      if (ivaEl)  ivaEl.textContent  = '—';
+      if (feeEl)  feeEl.textContent  = '—';
+      if (totEl)  totEl.textContent  = '—';
+      return;
+    }
+
+    // Etiquetas según estado de pago en la orden
+    const norm = paymentState(order); // 'paid' | 'pending' | 'rejected' | 'canceled' | 'error'
+    if (norm === 'paid') {
+      if (titleEl) titleEl.textContent = 'Detalle de cobro';
+      if (totLbl)  totLbl.textContent  = 'Total pagado';
+      if (noteEl)  noteEl.textContent  = '';
+    } else {
+      if (titleEl) titleEl.textContent = 'Resumen de costos';
+      if (totLbl)  totLbl.textContent  = 'Total del trámite (No cobrado)';
+      if (noteEl)  noteEl.textContent  = (norm === 'pending')
+        ? 'Aún no se ha realizado ningún cobro.'
+        : 'No se realizó ningún cobro. Puedes reintentarlo ahora o elegir otro método.';
+    }
+
+    if (baseEl) baseEl.textContent = pesos(sPrice.base ?? 0);
+    if (ivaEl)  ivaEl.textContent  = pesos(sPrice.iva  ?? sPrice.tax ?? 0);
+    if (feeEl)  feeEl.textContent  = pesos(sPrice.fee  ?? 0);
+    if (totEl)  totEl.textContent  = pesos(sPrice.total?? 0);
+  })();
 }
+// ...existing code...
 // ...existing code...
 
 
@@ -1091,10 +1146,38 @@ else if (IS_DEBUG && S.paySim) S.paySim.classList.add('hidden');
     obs.observe(f, { childList: true, subtree: true });
   }
 
-
-
-
   // ...existing code...
+
+  // Oculta iconos del header en móvil para no duplicar
+if (window.matchMedia && window.matchMedia('(max-width: 1023px)').matches) {
+  const headerActions = document.querySelector('.actions');
+  if (headerActions) headerActions.style.display = 'none';
+}
+
+// Bottom nav handlers
+document.getElementById('bottom-nav')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-nav]');
+  if (!btn) return;
+  const where = btn.dataset.nav;
+
+  if (where === 'catalog') {
+    show(S.list);
+    document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  if (where === 'history') {
+    show(S.list);
+    document.getElementById('history')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  if (where === 'about') {
+    document.getElementById('about-modal')?.showModal();
+  }
+});
+
+// Cierre del modal
+document.getElementById('about-close')?.addEventListener('click', () => {
+  document.getElementById('about-modal')?.close();
+});
+
 
 });
 

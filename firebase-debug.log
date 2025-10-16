@@ -1,155 +1,17 @@
-[debug] [2025-10-10T14:15:48.205Z] ----------------------------------------------------------------------
-[debug] [2025-10-10T14:15:48.211Z] Command:       C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\firebase-tools\lib\bin\firebase.js emulators:start --import ./emulator-data --export-on-exit
-[debug] [2025-10-10T14:15:48.212Z] CLI Version:   14.15.1
-[debug] [2025-10-10T14:15:48.213Z] Platform:      win32
-[debug] [2025-10-10T14:15:48.213Z] Node Version:  v20.19.1
-[debug] [2025-10-10T14:15:48.213Z] Time:          Fri Oct 10 2025 09:15:48 GMT-0500 (hora estándar de Colombia)
-[debug] [2025-10-10T14:15:48.213Z] ----------------------------------------------------------------------
+[debug] [2025-10-16T11:56:19.805Z] ----------------------------------------------------------------------
+[debug] [2025-10-16T11:56:19.809Z] Command:       C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\firebase-tools\lib\bin\firebase.js emulators:start --import ./emulator-data --export-on-exit
+[debug] [2025-10-16T11:56:19.809Z] CLI Version:   14.15.1
+[debug] [2025-10-16T11:56:19.809Z] Platform:      win32
+[debug] [2025-10-16T11:56:19.809Z] Node Version:  v20.19.1
+[debug] [2025-10-16T11:56:19.809Z] Time:          Thu Oct 16 2025 06:56:19 GMT-0500 (hora estándar de Colombia)
+[debug] [2025-10-16T11:56:19.810Z] ----------------------------------------------------------------------
 [debug] 
-[debug] [2025-10-10T14:15:48.794Z] Object "/emulators" in "firebase.json" has unknown property: {"additionalProperty":"import"}
-[debug] [2025-10-10T14:15:48.806Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
-[debug] [2025-10-10T14:15:48.807Z] > authorizing via signed-in user (the.piece.maker@gmail.com)
-[debug] [2025-10-10T14:15:48.968Z] openjdk version "21.0.8" 2025-07-15 LTS
+[debug] [2025-10-16T11:56:19.812Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[debug] [2025-10-16T11:56:20.092Z] Object "/emulators" in "firebase.json" has unknown property: {"additionalProperty":"import"}
+[debug] [2025-10-16T11:56:20.098Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-10-16T11:56:20.099Z] > authorizing via signed-in user (the.piece.maker@gmail.com)
+[debug] [2025-10-16T11:56:20.187Z] openjdk version "21.0.8" 2025-07-15 LTS
 OpenJDK Runtime Environment Temurin-21.0.8+9 (build 21.0.8+9-LTS)
-OpenJDK 64-Bit Server VM Temurin-21.0.8+9 (build 21.0.8+9-LTS, mixed mode, sharing)
 
-[debug] [2025-10-10T14:15:48.990Z] Parsed Java major version: 21
-[info] i  emulators: Starting emulators: functions, firestore, hosting, extensions {"metadata":{"emulator":{"name":"hub"},"message":"Starting emulators: functions, firestore, hosting, extensions"}}
-[debug] [2025-10-10T14:15:48.996Z] Checked if tokens are valid: true, expires at: 1760108950936
-[debug] [2025-10-10T14:15:48.996Z] Checked if tokens are valid: true, expires at: 1760108950936
-[debug] [2025-10-10T14:15:48.998Z] >>> [apiv2][query] GET https://cloudresourcemanager.googleapis.com/v1/projects/apptramiteya [none]
-[debug] [2025-10-10T14:15:49.574Z] <<< [apiv2][status] GET https://cloudresourcemanager.googleapis.com/v1/projects/apptramiteya 200
-[debug] [2025-10-10T14:15:49.574Z] <<< [apiv2][body] GET https://cloudresourcemanager.googleapis.com/v1/projects/apptramiteya {"projectNumber":"116926764904","projectId":"apptramiteya","lifecycleState":"ACTIVE","name":"apptramiteya","labels":{"firebase":"enabled","firebase-core":"disabled"},"createTime":"2025-08-30T16:45:38.039227Z"}
-[debug] [2025-10-10T14:15:49.620Z] [logging] Logging Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
-[debug] [2025-10-10T14:15:49.620Z] [firestore] Firestore Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
-[debug] [2025-10-10T14:15:49.620Z] [firestore.websocket] websocket server for firestore only supports listening on one address (127.0.0.1). Not listening on ::1
-[debug] [2025-10-10T14:15:49.620Z] [hosting] Hosting Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
-[debug] [2025-10-10T14:15:49.621Z] assigned listening specs for emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"ui":[{"address":"127.0.0.1","family":"IPv4","port":4000},{"address":"::1","family":"IPv6","port":4000}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}],"firestore":[{"address":"127.0.0.1","family":"IPv4","port":8080}],"firestore.websocket":[{"address":"127.0.0.1","family":"IPv4","port":9150}],"hosting":[{"address":"127.0.0.1","family":"IPv4","port":5000}]},"metadata":{"message":"assigned listening specs for emulators"}}
-[debug] [2025-10-10T14:15:49.632Z] [hub] writing locator at C:\Users\ALEJAN~1.CAR\AppData\Local\Temp\hub-apptramiteya.json
-[debug] [2025-10-10T14:15:49.659Z] [Extensions] Started Extensions emulator, this is a noop.
-[debug] [2025-10-10T14:15:49.679Z] [functions] Functions Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
-[debug] [2025-10-10T14:15:49.679Z] [eventarc] Eventarc Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
-[debug] [2025-10-10T14:15:49.679Z] [tasks] Cloud Tasks Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
-[debug] [2025-10-10T14:15:49.679Z] late-assigned ports for functions and eventarc emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"ui":[{"address":"127.0.0.1","family":"IPv4","port":4000},{"address":"::1","family":"IPv6","port":4000}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}],"firestore":[{"address":"127.0.0.1","family":"IPv4","port":8080}],"firestore.websocket":[{"address":"127.0.0.1","family":"IPv4","port":9150}],"hosting":[{"address":"127.0.0.1","family":"IPv4","port":5000}],"functions":[{"address":"127.0.0.1","family":"IPv4","port":5001}],"eventarc":[{"address":"127.0.0.1","family":"IPv4","port":9299}],"tasks":[{"address":"127.0.0.1","family":"IPv4","port":9499}]},"metadata":{"message":"late-assigned ports for functions and eventarc emulators"}}
-[warn] !  functions: The following emulators are not running, calls to these services from the Functions emulator will affect production: apphosting, auth, database, pubsub, storage, dataconnect {"metadata":{"emulator":{"name":"functions"},"message":"The following emulators are not running, calls to these services from the Functions emulator will affect production: \u001b[1mapphosting, auth, database, pubsub, storage, dataconnect\u001b[22m"}}
-[debug] [2025-10-10T14:15:49.749Z] defaultcredentials: writing to file C:\Users\alejandro.carmona\AppData\Roaming\firebase\the_piece.maker_gmail.com_application_default_credentials.json
-[debug] [2025-10-10T14:15:49.751Z] Setting GAC to C:\Users\alejandro.carmona\AppData\Roaming\firebase\the_piece.maker_gmail.com_application_default_credentials.json {"metadata":{"emulator":{"name":"functions"},"message":"Setting GAC to C:\\Users\\alejandro.carmona\\AppData\\Roaming\\firebase\\the_piece.maker_gmail.com_application_default_credentials.json"}}
-[debug] [2025-10-10T14:15:49.752Z] Checked if tokens are valid: true, expires at: 1760108950936
-[debug] [2025-10-10T14:15:49.752Z] Checked if tokens are valid: true, expires at: 1760108950936
-[debug] [2025-10-10T14:15:49.752Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/apptramiteya/adminSdkConfig [none]
-[debug] [2025-10-10T14:15:50.158Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/apptramiteya/adminSdkConfig 200
-[debug] [2025-10-10T14:15:50.158Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/apptramiteya/adminSdkConfig {"projectId":"apptramiteya","storageBucket":"apptramiteya.firebasestorage.app"}
-[info] i  firestore: Importing data from C:\Users\alejandro.carmona\tramiteYA\emulator-data\firestore_export\firestore_export.overall_export_metadata {"metadata":{"emulator":{"name":"firestore"},"message":"Importing data from C:\\Users\\alejandro.carmona\\tramiteYA\\emulator-data\\firestore_export\\firestore_export.overall_export_metadata"}}
-[debug] [2025-10-10T14:15:50.235Z] Ignoring unsupported arg: auto_download {"metadata":{"emulator":{"name":"firestore"},"message":"Ignoring unsupported arg: auto_download"}}
-[debug] [2025-10-10T14:15:50.236Z] Ignoring unsupported arg: single_project_mode_error {"metadata":{"emulator":{"name":"firestore"},"message":"Ignoring unsupported arg: single_project_mode_error"}}
-[debug] [2025-10-10T14:15:50.236Z] Starting Firestore Emulator with command {"binary":"java","args":["-Dgoogle.cloud_firestore.debug_log_level=FINE","-Duser.language=en","-jar","C:\\Users\\alejandro.carmona\\.cache\\firebase\\emulators\\cloud-firestore-emulator-v1.19.8.jar","--host","127.0.0.1","--port",8080,"--websocket_port",9150,"--project_id","apptramiteya","--seed_from_export","C:\\Users\\alejandro.carmona\\tramiteYA\\emulator-data\\firestore_export\\firestore_export.overall_export_metadata","--rules","C:\\Users\\alejandro.carmona\\tramiteYA\\firestore.rules","--single_project_mode",true,"--functions_emulator","127.0.0.1:5001"],"optionalArgs":["port","webchannel_port","host","rules","websocket_port","functions_emulator","seed_from_export","project_id","single_project_mode"],"joinArgs":false,"shell":false,"port":8080} {"metadata":{"emulator":{"name":"firestore"},"message":"Starting Firestore Emulator with command {\"binary\":\"java\",\"args\":[\"-Dgoogle.cloud_firestore.debug_log_level=FINE\",\"-Duser.language=en\",\"-jar\",\"C:\\\\Users\\\\alejandro.carmona\\\\.cache\\\\firebase\\\\emulators\\\\cloud-firestore-emulator-v1.19.8.jar\",\"--host\",\"127.0.0.1\",\"--port\",8080,\"--websocket_port\",9150,\"--project_id\",\"apptramiteya\",\"--seed_from_export\",\"C:\\\\Users\\\\alejandro.carmona\\\\tramiteYA\\\\emulator-data\\\\firestore_export\\\\firestore_export.overall_export_metadata\",\"--rules\",\"C:\\\\Users\\\\alejandro.carmona\\\\tramiteYA\\\\firestore.rules\",\"--single_project_mode\",true,\"--functions_emulator\",\"127.0.0.1:5001\"],\"optionalArgs\":[\"port\",\"webchannel_port\",\"host\",\"rules\",\"websocket_port\",\"functions_emulator\",\"seed_from_export\",\"project_id\",\"single_project_mode\"],\"joinArgs\":false,\"shell\":false,\"port\":8080}"}}
-[info] i  firestore: Firestore Emulator logging to firestore-debug.log {"metadata":{"emulator":{"name":"firestore"},"message":"Firestore Emulator logging to \u001b[1mfirestore-debug.log\u001b[22m"}}
-[debug] [2025-10-10T14:15:52.887Z] Oct 10, 2025 9:15:52 AM com.google.cloud.datastore.emulator.firestore.websocket.WebSocketServer start
-INFO: Started WebSocket server on ws://127.0.0.1:9150
- {"metadata":{"emulator":{"name":"firestore"},"message":"Oct 10, 2025 9:15:52 AM com.google.cloud.datastore.emulator.firestore.websocket.WebSocketServer start\r\nINFO: Started WebSocket server on ws://127.0.0.1:9150\r\n"}}
-[debug] [2025-10-10T14:15:53.016Z] API endpoint: http:// {"metadata":{"emulator":{"name":"firestore"},"message":"API endpoint: http://"}}
-[debug] [2025-10-10T14:15:53.017Z] 127.0.0.1:8080
-If you are using a library that supports the FIRESTORE_EMULATOR_HOST environment variable, run:
- {"metadata":{"emulator":{"name":"firestore"},"message":"127.0.0.1:8080\nIf you are using a library that supports the FIRESTORE_EMULATOR_HOST environment variable, run:\r\n"}}
-[debug] [2025-10-10T14:15:53.017Z] 
-   export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
+[debug] [2025-10-16T11:56:20.187Z] OpenJDK 64-Bit Server VM Temurin-21.0.8+9 (build 21.0.8+9-LTS, mixed mode, sharing)
 
-If you are running a Firestore in Datastore Mode project, run:
-
-   export DATASTORE_EMULATOR_HOST=127.0.0.1:8080
-
- {"metadata":{"emulator":{"name":"firestore"},"message":"\n   export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080\n\nIf you are running a Firestore in Datastore Mode project, run:\r\n\n   export DATASTORE_EMULATOR_HOST=127.0.0.1:8080\n\n"}}
-[debug] [2025-10-10T14:15:53.018Z] Note: Support for Datastore Mode is in preview. If you encounter any bugs please file at https://github.com/firebase/firebase-tools/issues.
- {"metadata":{"emulator":{"name":"firestore"},"message":"Note: Support for Datastore Mode is in preview. If you encounter any bugs please file at https://github.com/firebase/firebase-tools/issues.\r\n"}}
-[debug] [2025-10-10T14:15:53.019Z] Dev App Server is now running.
-
- {"metadata":{"emulator":{"name":"firestore"},"message":"Dev App Server is now running.\n\r\n"}}
-[info] +  firestore: Firestore Emulator UI websocket is running on 9150. {"metadata":{"emulator":{"name":"firestore"},"message":"Firestore Emulator UI websocket is running on 9150."}}
-[debug] [2025-10-10T14:15:53.074Z] Checked if tokens are valid: true, expires at: 1760108950936
-[debug] [2025-10-10T14:15:53.074Z] Checked if tokens are valid: true, expires at: 1760108950936
-[debug] [2025-10-10T14:15:53.075Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/apptramiteya/sites 
-[debug] [2025-10-10T14:15:53.992Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/apptramiteya/sites 200
-[debug] [2025-10-10T14:15:53.993Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/apptramiteya/sites {"sites":[{"name":"projects/apptramiteya/sites/apptramiteya","defaultUrl":"https://apptramiteya.web.app","type":"DEFAULT_SITE"}]}
-[debug] [2025-10-10T14:15:53.993Z] Checked if tokens are valid: true, expires at: 1760108950936
-[debug] [2025-10-10T14:15:53.993Z] Checked if tokens are valid: true, expires at: 1760108950936
-[debug] [2025-10-10T14:15:53.993Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/apptramiteya/webApps/-/config [none]
-[debug] [2025-10-10T14:15:54.342Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/apptramiteya/webApps/-/config 200
-[debug] [2025-10-10T14:15:54.342Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/apptramiteya/webApps/-/config {"projectId":"apptramiteya","storageBucket":"apptramiteya.firebasestorage.app","apiKey":"AIzaSyC0cOXGq_-PyQGGVo6DRiNM3tVjR2IZHvE","authDomain":"apptramiteya.firebaseapp.com","messagingSenderId":"116926764904","projectNumber":"116926764904","version":"2"}
-[debug] [2025-10-10T14:15:54.351Z] Checked if tokens are valid: true, expires at: 1760108950936
-[debug] [2025-10-10T14:15:54.351Z] Checked if tokens are valid: true, expires at: 1760108950936
-[debug] [2025-10-10T14:15:54.351Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/apptramiteya [none]
-[debug] [2025-10-10T14:15:54.631Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/apptramiteya 200
-[debug] [2025-10-10T14:15:54.631Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/apptramiteya {"projectId":"apptramiteya","projectNumber":"116926764904","displayName":"apptramiteya","name":"projects/apptramiteya","resources":{"hostingSite":"apptramiteya"},"state":"ACTIVE","etag":"1_ec6cce59-c378-42cc-815b-3fa82059434d"}
-[info] i  hosting[apptramiteya]: Serving hosting files from: web {"metadata":{"emulator":{"name":"hosting"},"message":"Serving hosting files from: \u001b[1mweb\u001b[22m"}}
-[info] +  hosting[apptramiteya]: Local server: http://127.0.0.1:5000 {"metadata":{"emulator":{"name":"hosting"},"message":"Local server: \u001b[4m\u001b[1mhttp://127.0.0.1:5000\u001b[22m\u001b[24m"}}
-[debug] [2025-10-10T14:15:54.716Z] [Extensions] Connecting Extensions emulator, this is a noop.
-[info] i  functions: Watching "C:\Users\alejandro.carmona\tramiteYA\functions" for Cloud Functions... {"metadata":{"emulator":{"name":"functions"},"message":"Watching \"C:\\Users\\alejandro.carmona\\tramiteYA\\functions\" for Cloud Functions..."}}
-[debug] [2025-10-10T14:15:54.745Z] Validating nodejs source
-[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
-[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
-[debug] [2025-10-10T14:15:56.807Z] > [functions] package.json contents: {
-  "name": "functions",
-  "description": "Cloud Functions for Firebase - TrámiteYA",
-  "scripts": {
-    "build": "tsc",
-    "clean": "rimraf lib",
-    "seed": "ts-node --transpile-only scripts/seedServices.ts",
-    "serve": "npm run build && firebase emulators:start --only functions",
-    "deploy": "npm run build && firebase deploy --only functions"
-  },
-  "engines": {
-    "node": "20"
-  },
-  "main": "lib/index.js",
-  "dependencies": {
-    "firebase-admin": "^12.5.0",
-    "firebase-functions": "^5.0.0"
-  },
-  "devDependencies": {
-    "typescript": "^5.3.3",
-    "ts-node": "^10.9.2",
-    "rimraf": "^5.0.5"
-  },
-  "private": true
-}
-[debug] [2025-10-10T14:15:56.807Z] Building nodejs source
-[debug] [2025-10-10T14:15:56.808Z] Failed to find version of module node: reached end of search path C:\Users\alejandro.carmona\tramiteYA\functions\node_modules
-[info] +  functions: Using node@20 from host. 
-[debug] [2025-10-10T14:15:56.812Z] Could not find functions.yaml. Must use http discovery
-[debug] [2025-10-10T14:15:56.833Z] Found firebase-functions binary at 'C:\Users\alejandro.carmona\tramiteYA\functions\node_modules\.bin\firebase-functions'
-[info] Serving at port 8063
-
-[debug] [2025-10-10T14:15:58.099Z] Got response from /__/functions.yaml {"endpoints":{"payments_init":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"httpsTrigger":{},"entryPoint":"payments_init"},"payments_confirm":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"httpsTrigger":{},"entryPoint":"payments_confirm"},"config_public":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"httpsTrigger":{},"entryPoint":"config_public"},"services":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"httpsTrigger":{},"entryPoint":"services"},"orders":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"httpsTrigger":{},"entryPoint":"orders"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
-[debug] [2025-10-10T14:16:02.148Z] defaultcredentials: writing to file C:\Users\alejandro.carmona\AppData\Roaming\firebase\the_piece.maker_gmail.com_application_default_credentials.json
-[debug] [2025-10-10T14:16:02.149Z] Setting GAC to C:\Users\alejandro.carmona\AppData\Roaming\firebase\the_piece.maker_gmail.com_application_default_credentials.json {"metadata":{"emulator":{"name":"functions"},"message":"Setting GAC to C:\\Users\\alejandro.carmona\\AppData\\Roaming\\firebase\\the_piece.maker_gmail.com_application_default_credentials.json"}}
-[info] +  functions: Loaded functions definitions from source: payments_init, payments_confirm, config_public, services, orders. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: payments_init, payments_confirm, config_public, services, orders."}}
-[info] +  functions[us-central1-payments_init]: http function initialized (http://127.0.0.1:5001/apptramiteya/us-central1/payments_init). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/apptramiteya/us-central1/payments_init)."}}
-[info] +  functions[us-central1-payments_confirm]: http function initialized (http://127.0.0.1:5001/apptramiteya/us-central1/payments_confirm). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/apptramiteya/us-central1/payments_confirm)."}}
-[info] +  functions[us-central1-config_public]: http function initialized (http://127.0.0.1:5001/apptramiteya/us-central1/config_public). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/apptramiteya/us-central1/config_public)."}}
-[info] +  functions[us-central1-services]: http function initialized (http://127.0.0.1:5001/apptramiteya/us-central1/services). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/apptramiteya/us-central1/services)."}}
-[info] +  functions[us-central1-orders]: http function initialized (http://127.0.0.1:5001/apptramiteya/us-central1/orders). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/apptramiteya/us-central1/orders)."}}
-[debug] [2025-10-10T14:16:02.175Z] Could not find VSCode notification endpoint: FetchError: request to http://localhost:40001/vscode/notify failed, reason: . If you are not running the Firebase Data Connect VSCode extension, this is expected and not an issue.
-[info] 
-┌─────────────────────────────────────────────────────────────┐
-│ ✔  All emulators ready! It is now safe to connect your app. │
-│ i  View Emulator UI at http://127.0.0.1:4000/               │
-└─────────────────────────────────────────────────────────────┘
-
-┌────────────┬────────────────┬──────────────────────────────────┐
-│ Emulator   │ Host:Port      │ View in Emulator UI              │
-├────────────┼────────────────┼──────────────────────────────────┤
-│ Functions  │ 127.0.0.1:5001 │ http://127.0.0.1:4000/functions  │
-├────────────┼────────────────┼──────────────────────────────────┤
-│ Firestore  │ 127.0.0.1:8080 │ http://127.0.0.1:4000/firestore  │
-├────────────┼────────────────┼──────────────────────────────────┤
-│ Hosting    │ 127.0.0.1:5000 │ n/a                              │
-├────────────┼────────────────┼──────────────────────────────────┤
-│ Extensions │ 127.0.0.1:5001 │ http://127.0.0.1:4000/extensions │
-└────────────┴────────────────┴──────────────────────────────────┘
-  Emulator Hub host: 127.0.0.1 port: 4400
-  Other reserved ports: 4500, 9150
-┌─────────────────────────┬───────────────┬─────────────────────┐
-│ Extension Instance Name │ Extension Ref │ View in Emulator UI │
-└─────────────────────────┴───────────────┴─────────────────────┘
-Issues? Report them at https://github.com/firebase/firebase-tools/issues and attach the *-debug.log files.
- 

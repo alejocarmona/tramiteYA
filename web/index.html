@@ -11,6 +11,7 @@
 
   <title>TrámiteYA</title>
   <style>
+    :root{ --bottom-nav-h: 72px; }
     :root {
       --bg: #F7F7F7;
       --surface: #FFFFFF;
@@ -23,7 +24,19 @@
       --shadow: 0 1px 2px rgba(0,0,0,.08);
       --tap: 44px;
       --gap: 12px;
+        /* ...existing code... */
+  --card-border: #e5e7eb;                 /* light */
+  --shadow-1: 0 1px 2px rgba(0,0,0,.06);  /* base */
+  --shadow-2: 0 6px 12px rgba(0,0,0,.06); /* elevation 2 */
+  --shadow-1-hover: 0 2px 4px rgba(0,0,0,.08);
+  --shadow-2-hover: 0 10px 20px rgba(0,0,0,.10);
     }
+
+/* INSERTAR (después del bloque anterior). Efecto: borde acorde al tema oscuro */
+@media (prefers-color-scheme: dark){
+  :root{ --card-border: #1e293b; }
+}
+
 body {
   font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial;
   font-size: 16px;
@@ -59,13 +72,23 @@ body {
       margin: 0 auto;
       padding: 12px 16px 24px;
     }
-    .card {
-      background: var(--surface);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 16px;
-      margin-bottom: 12px;
-    }
+/* REEMPLAZAR (sustituye la regla .card del primer <style>). 
+   Efecto: radio 14px, borde sutil y sombra multi-layer con transición */
+.card{
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);                 /* 14px */
+  box-shadow: var(--shadow-1), var(--shadow-2); /* elevación 2 */
+  padding: 16px;
+  margin-bottom: 12px;
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+/* INSERTAR (junto a la regla anterior). Efecto: elevación suave al hover/focus */
+.card:hover,
+.card:focus-within{
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-1-hover), var(--shadow-2-hover);
+}
     .row {
       display: flex;
       align-items: center;
@@ -114,6 +137,7 @@ body {
       color: var(--primary);
       border: 1px solid var(--primary);
     }
+      
     .btn:disabled {
       opacity: .6;
       cursor: not-allowed;
@@ -191,6 +215,11 @@ body {
       header { padding: 10px 8px; }
     }
 
+/* INSERTAR (debajo del bloque de main).
+   Efecto: el contenido no queda oculto bajo la barra inferior */
+@media (max-width:1023px){
+  main{ padding-bottom: calc(24px + var(--bottom-nav-h) + env(safe-area-inset-bottom)); }
+}
 
     .icon-copy {
   width: 16px;
@@ -248,6 +277,23 @@ body {
     .form-section-help{font-size:12px;color:#64748b;margin:0 0 8px 2px;padding-left:22px;}
     .section-content{padding-left:22px;}
     .hr{border-top:1px solid #eee;}
+
+/* INSERTAR (debajo de estilos existentes de #services o al final del bloque <style> principal).
+   Efecto: listado de servicios en grid responsivo 1/2/3 columnas sin desbordes */
+#services{
+  display: grid;
+  grid-template-columns: 1fr;     /* < 640px: 1 columna */
+  gap: 16px;
+}
+@media (min-width: 640px){
+  #services{ grid-template-columns: repeat(2, minmax(0, 1fr)); }  /* 640–1023px: 2 columnas */
+}
+@media (min-width: 1024px){
+  #services{ grid-template-columns: repeat(2, minmax(0, 1fr)); }  /* ≥1024px: 3 columnas */
+}
+/* Asegura que las tarjetas ocupen el 100% de su celda */
+#services .card{ width:100%; box-sizing:border-box; }
+
   </style>
   <style>
     body.on-form #btn-reload,
@@ -302,6 +348,23 @@ body {
 /* Pequeño hover (desktop) */
 @media (hover:hover){
   .fab-whatsapp:hover{ transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,.28); }
+}
+/* INSERTAR (debajo de las reglas de .fab-whatsapp).
+   Efecto: el botón flotante queda por encima de la barra inferior sin superponerse */
+@media (max-width:1023px){
+  .fab-whatsapp{
+    bottom: calc(20px + var(--bottom-nav-h)); /* sube el FAB sobre la barra */
+  }
+  @supports(padding:max(0px)){
+    .fab-whatsapp{
+      bottom: calc(max(20px, env(safe-area-inset-bottom)) + var(--bottom-nav-h));
+    }
+  }
+}
+
+/* En desktop no hay barra inferior: mantener distancia estándar */
+@media (min-width:1024px){
+  .fab-whatsapp{ bottom: 20px; }
 }
 
 .btn-icon {
@@ -393,6 +456,58 @@ body {
 }
 
 </style>
+<style>
+
+/* REEMPLAZAR regla completa de #bottom-nav (en el bloque “Bottom nav: solo móvil”).
+   Efecto: fija altura mínima y evita que tape el contenido */
+#bottom-nav {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  min-height: var(--bottom-nav-h);                 /* nuevo */
+  padding: 8px max(env(safe-area-inset-left),16px) calc(8px + env(safe-area-inset-bottom)) max(env(safe-area-inset-right),16px);
+  background: #0b1221;
+  display: grid; grid-template-columns: repeat(3,1fr);
+  gap: 8px; align-items: center;
+  box-shadow: 0 -8px 24px rgba(0,0,0,.18);
+  z-index: 50;
+}
+#bottom-nav button {
+  appearance: none; border: 0; background: transparent; color: #e6f0ff;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; padding: 8px 4px; border-radius: 12px; min-height: 52px;
+  font: 600 12px/1 Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  transition: background-color .18s ease, transform .18s ease;
+}
+/* REEMPLAZAR tamaño de iconos (en el bloque #bottom-nav button img).
+   Efecto: iconos más grandes en la barra inferior */
+#bottom-nav button img { width: 28px; height: 28px; }
+#bottom-nav button:active { transform: translateY(1px); }
+#bottom-nav button:hover, #bottom-nav button:focus-visible {
+  background: rgba(255,255,255,.08); outline: none;
+}
+
+@media (min-width: 1024px) {
+  #bottom-nav { display: none; }           /* oculta barra en desktop */
+  .actions { display: flex !important; }   /* mantén botones del header en desktop */
+}
+
+/* Dialog mínimo */
+dialog#about-modal { border: none; padding: 0; border-radius: 16px; max-width: 520px; width: calc(100% - 32px); }
+dialog#about-modal::backdrop { background: rgba(0,0,0,.4); }
+dialog#about-modal article { padding: 16px 16px 18px; background: #fff; color: #0b1221; border-radius: 16px; }
+dialog#about-modal header { display:flex; justify-content: space-between; align-items:center; margin-bottom: 8px; }
+dialog#about-modal .muted { color: #64748b; font-size: 12px; }
+#about-close { 
+  appearance:none; 
+  border:0; 
+  background:transparent; 
+  font-size:18px; 
+  cursor:pointer; 
+  color:#fff;                  /* << cambio */
+}
+
+
+</style>
 
 </head>
 <body>
@@ -475,31 +590,31 @@ body {
       </div>
 
       <!-- 2) DESGLOSE -->
+      <!-- 2) DESGLOSE -->
       <div class="section-block">
-       <!-- <div class="form-section-title"><span class="section-ico">💵</span>Desglose de precios</div>-->
         <div class="form-section-title" >
-  <!--<img src="./img/icon_contacto.svg" alt="" class="section-ico">-->
-  <img src="./img/icon_precio.svg" alt="" class="section-ico" style="width:30px; height:auto;">
-  Desglose de precios
-</div>
+          <!--<img src="./img/icon_contacto.svg" alt="" class="section-ico">-->
+          <img src="./img/icon_precio.svg" alt="" class="section-ico" style="width:30px; height:auto;">
+          Desglose de precios
+        </div>
 
-     
         <div class="section-content">
           <p class="form-section-help" style="margin:4px 0 8px">Este es el valor a pagar.</p><p></p>
-    <div class="card money" id="price-box">
-      <div class="title" id="price-title">Detalle de cobro</div>
-      <div class="row money-row"><span>Valor base</span><strong id="price-base">—</strong></div>
-      <div class="row money-row"><span>IVA</span><strong id="price-tax">—</strong></div>
-      <div class="row money-row"><span>Servicio</span><strong id="price-fee">—</strong></div>
-      <div class="hr"></div>
-      <div class="row total">
-        <div><strong id="price-total-label">Total</strong></div>
-        <div id="price-total"></div>
-      </div>
-      <div id="price-note" class="muted" style="margin-top:6px"></div>
-    </div>
+
+          <!-- NUEVO: card con IDs que el JS actualiza en openForm -->
+          <div class="card money" id="form-price-box">
+            <div class="row money-row"><span>Valor base</span><strong id="form-price-base">—</strong></div>
+            <div class="row money-row"><span>IVA</span><strong id="form-price-tax">—</strong></div>
+            <div class="row money-row"><span>Servicio</span><strong id="form-price-fee">—</strong></div>
+            <div class="hr"></div>
+            <div class="row total">
+              <div><strong>Total a pagar</strong></div>
+              <div id="form-price-total">—</div>
+            </div>
+          </div>
         </div>
       </div>
+<!-- ...existing code... -->
       <div class="hr" style="border-top:1px solid #eee"></div>
 <p></p>
       <!-- 3) CAMPOS DEL TRÁMITE (se pintan dinámicamente en este contenedor) -->
@@ -703,6 +818,56 @@ document.addEventListener('DOMContentLoaded', () => {
   <img src="./img/soporte.png" alt="WhatsApp">
 </a>
 
+<!-- Bottom Nav -->
+<nav id="bottom-nav" aria-label="Navegación principal">
+  <button data-nav="catalog" aria-label="Catálogo">
+    <img src="./img/actualizar.png" alt="" />
+    <span>Catálogo</span>
+  </button>
+  <button data-nav="history" aria-label="Mis solicitudes">
+    <img src="./img/historial.png" alt="" />
+    <span>Historial</span>
+  </button>
+  <button data-nav="about" aria-label="Quiénes somos">
+    <img src="./img/acerca-de.png" alt="" />
+    <span>Nosotros</span>
+  </button>
+</nav>
+
+<!-- Modal simple “Quiénes somos” -->
+<dialog id="about-modal">
+  <article>
+    <header>
+      <strong>TrámiteYA</strong>
+      <button id="about-close" aria-label="Cerrar">✕</button>
+    </header>
+    <p>Agilizamos la obtención de trámites y certificados en Colombia. Soporte por WhatsApp y correo. Tiempo de entrega típico: 24 hrs.</p>
+    <p class="muted">© TrámiteYA</p>
+  </article>
+</dialog>
+<!-- INSERTAR justo después del bloque <dialog id="about-modal"> y antes de </body>.
+     Efecto: el modal se cierra al hacer click por fuera (backdrop) y con el botón X -->
+<script>
+// ...existing code...
+document.addEventListener('DOMContentLoaded', () => {
+  const modal = document.getElementById('about-modal');
+  const btnClose = document.getElementById('about-close');
+
+  if (btnClose && modal) btnClose.addEventListener('click', () => modal.close());
+
+  // Cerrar al hacer click fuera del contenido del modal (sobre el backdrop)
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      const article = modal.querySelector('article');
+      if (!article) return;
+      const r = article.getBoundingClientRect();
+      const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+      if (!inside) modal.close('backdrop');
+    });
+  }
+});
+// ...existing code...
+</script>
 
 </body>
 </html>
