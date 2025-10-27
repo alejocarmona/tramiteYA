@@ -54,39 +54,67 @@ function hasWhatsAppNumber() {
   return !!(APP_CONFIG.whatsappNumber && String(APP_CONFIG.whatsappNumber).trim());
 }
 
+
+
 function mapPayment(payment) {
   if (!payment) return '⏳ Aún no procesado';
+
+  // Cuando viene como string
   if (typeof payment === 'string') {
-    if (payment === 'paid' || payment === 'APPROVED' || payment === 'SUCCESS') return '✅ Pago aprobado';
-    if (payment === 'rejected' || payment === 'DECLINED') return '❌ Pago rechazado';
-    if (payment === 'canceled') return '❌ Pago cancelado';
-    if (payment === 'error' ) return '❌ Error en el pago';
-    return payment;
+    const p = String(payment).toLowerCase();
+    if (p === 'pending' || p === 'queued')   return '⏳ Pago pendiente';
+    if (p === 'paid')                        return '✅ Pago aprobado';
+    if (p === 'rejected' || p === 'declined')return '❌ Pago rechazado';
+    if (p === 'canceled' || p === 'voided')  return '❌ Pago cancelado';
+    if (p === 'error')                       return '❌ Error en el pago';
+    // Wompi en mayúsculas
+    if (payment === 'APPROVED' || payment === 'SUCCESS') return '✅ Pago aprobado';
+    if (payment === 'DECLINED')                            return '❌ Pago rechazado';
+    return payment; // fallback
   }
-  switch (String(payment.status).toLowerCase()) {
-    case 'success':      return '✅ Pago aprobado';
-    case 'approved':     return '✅ Pago aprobado';         // ← por si acaso
-    case 'insufficient': return '⚠️ Fondos insuficientes';    
-    case 'declined':     return '❌ Pago rechazado';        // ← sinónimo
-    case 'canceled':     return '❌ Pago cancelado';
-    case 'voided':       return '❌ Pago cancelado';        // ← sinónimo
-    case 'error':        return '❌ Error en el pago';  
-    case 'APPROVED':         return '✅ Pago aprobado';         // ← Wompi
-    case 'DECLINED':     return '❌ Pago rechazado';        // ← Wompi
-    case 'SUCCESS':    return '✅ Pago aprobado';      // ← Wompi
-    default:             return payment.status || '—';
+
+  // Cuando viene como objeto { status: ... }
+  switch (String(payment.status || '').toLowerCase()) {
+    case 'pending':
+    case 'queued':      return '⏳ Pago pendiente';
+    case 'success':
+    case 'paid':
+    case 'approved':    return '✅ Pago aprobado';
+    case 'insufficient':
+    case 'declined':
+    case 'rejected':    return '❌ Pago rechazado';
+    case 'canceled':
+    case 'voided':      return '❌ Pago cancelado';
+    case 'error':       return '❌ Error en el pago';
+    default:            return payment.status || '—';
   }
 }
+
+// NUEVO: traduce estados de la orden al español
+function mapOrderStatus(status) {
+  const s = String(status || '').toLowerCase();
+  switch (s) {
+    case 'queued':       return 'En cola';
+    case 'pending':      return 'Pendiente';
+    case 'in_progress':  return 'En proceso';
+    case 'delivered':    return 'Entregado';
+    case 'rejected':     return 'Rechazado';
+    case 'failed':       return 'Fallido';
+    default:             return status || '—';
+  }
+}
+
 function buildWAOrderMessage(order) {
   if (!order) return "Hola, necesito ayuda con TrámiteYA";
   const parts = [
     "Hola, necesito ayuda con TrámiteYA.",
     `Orden: ${order.id}`,
     order.serviceName ? `Trámite: ${order.serviceName}` : "",
-    `Estado: ${order.status || "—"} / Pago: ${mapPayment(order.payment)}`
+    `Estado: ${mapOrderStatus(order.status)} / Pago: ${mapPayment(order.payment)}`
   ].filter(Boolean);
   return parts.join(" ");
 }
+
 function setFabWhatsApp(orderOrNull) {
   const fab = document.getElementById('fab-whatsapp');
   if (!fab) return;
@@ -186,9 +214,24 @@ function pesos(n) {
   }).format(n || 0);
 }
 function isTerminalOrder(order) {
-  const terminalStatus = order.status === 'delivered' || order.status === 'failed';
-  const terminalPayment = ['rejected', 'canceled', 'error'].includes(String(order.payment || '').toLowerCase());
+  const normStatus = normalizeOrderStatus(order?.status);
+  const terminalStatus = normStatus === 'delivered' || normStatus === 'failed';
+  const p = String((order?.payment && (order.payment.status || order.payment)) || '').toLowerCase();
+  const terminalPayment = ['rejected', 'canceled', 'error'].includes(p);
   return terminalStatus || terminalPayment;
+}
+// NUEVO: normaliza estados de orden (ES → EN)
+function normalizeOrderStatus(status) {
+  const s = String(status || '').toLowerCase();
+  switch (s) {
+    case 'entregado':     return 'delivered';
+    case 'en cola':       return 'queued';
+    case 'pendiente':     return 'pending';
+    case 'en proceso':    return 'in_progress';
+    case 'rechazado':     return 'rejected';
+    case 'fallido':       return 'failed';
+    default:              return s; // ya en EN
+  }
 }
 function isDebug() {
   const q = new URLSearchParams(location.search);
@@ -199,17 +242,21 @@ function isDebug() {
 /* =====================
    API Wrapper
 ===================== */
-async function api(path, opts={}) {
+async function api(path, opts = {}) {
   const url = functionUrl(path);
   const res = await fetch(url, {
     method: opts.method || 'GET',
-    headers: { 'Content-Type':'application/json', ...(opts.headers || {}) },
+    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
     body: opts.body
   });
   const text = await res.text();
+
   if (!res.ok) {
+    if (res.status === 404 && opts.ignore404) {
+      return null; // ← tratar como “no hay datos”
+    }
     console.error('API error', { url, status: res.status, text });
-    showBanner(text || `Error HTTP ${res.status}`, 'error', true);
+    if (!opts.silent) showBanner(text || `Error HTTP ${res.status}`, 'error', true);
     throw new Error(text || `HTTP ${res.status}`);
   }
   return text ? JSON.parse(text) : {};
@@ -278,7 +325,7 @@ function renderHistory() {
       </div>
       <div class="h-foot">
         <div class="muted">Pago: ${mapPayment(o.payment)}</div>
-        <div class="muted">Estado: ${o.status || '—'}</div>
+        <div class="muted">Estado: ${mapOrderStatus(o.status)}</div> 
       </div>
       <div class="row" style="margin-top:8px">
         <button class="btn ghost" data-h-reload="${o.id}">Revisar estado</button>
@@ -287,15 +334,20 @@ function renderHistory() {
     </div>
   `).join('');
 
-  // Deshabilitar "Revisar estado" si es terminal; si no, handler
+  // Deshabilitar "Revisar estado" SOLO si la orden está entregada o fallida
   const reloadBtns = $$('#history-list [data-h-reload]');
   reloadBtns.forEach((btn, idx) => {
     const o = items[idx];
-    if (isTerminalOrder(o)) {
+    const st = normalizeOrderStatus(o?.status);      // 'queued'|'in_progress'|'delivered'|'failed'|...
+    const isTerminalForHistory = (st === 'delivered' || st === 'failed'); // ← cambio clave
+    if (isTerminalForHistory) {
       btn.setAttribute('disabled', '');
       btn.classList.add('secondary', 'outline');
       btn.textContent = 'Finalizado';
     } else {
+      btn.removeAttribute('disabled');
+      btn.classList.remove('secondary', 'outline');
+      btn.textContent = 'Revisar estado';
       btn.onclick = () => refreshHistoryStatus(btn.dataset.hReload);
     }
   });
@@ -310,6 +362,9 @@ function renderHistory() {
         const h = items.find(x => x.id === btn.dataset.hOpen);
         if (h && h.contact && !st.contact) st.contact = h.contact;
       } catch {}
+      // === SINCRONIZA HISTORIAL ===
+      updateHistoryStatus(st.id, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
+      // ============================
       renderStatus(st);
       show(S.status);
     };
@@ -389,9 +444,14 @@ async function loadServices() {
   data.items.forEach(svc=>{
     const card = document.createElement('div');
     card.className = 'card';
+    // ...existing code...
     card.innerHTML = `
       <div class="title">${svc.name}</div>
-      <div class="muted">Entrega aprox: ${svc.sla_hours || 24} h • Canales: ${(svc.deliver_channels||[]).join(', ') || 'email'}</div>
+      <div class="muted">
+        ${svc.description
+          ? String(svc.description)
+          : `Entrega aprox: ${svc.sla_hours || 24} h • Canales: ${(svc.deliver_channels||[]).join(', ') || 'email'}`}
+      </div>
       <div class="row" style="margin-top:8px">
         <div class="price">${pesos((svc.price?.total)||0)}</div>
         <button class="btn">Solicitar</button>
@@ -844,7 +904,8 @@ function renderStatus(order) {
   // Delivery status
   const sdel = document.getElementById('status-delivery');
   if (sdel) {
-    if (order.status === 'delivered') {
+    const normSt = normalizeOrderStatus(order.status);
+    if (normSt === 'delivered') {
       const ch = order.delivery && order.delivery.channel ? order.delivery.channel : 'entrega';
       sdel.textContent = `Entregado (${ch})`;
     } else {
@@ -883,7 +944,7 @@ function renderStatus(order) {
   } else if (badgeClass === 'pill warn') {
     friendly = 'Tu pago está pendiente ⏳. Si cerraste esta ventana, puedes reintentarlo desde tu historial.';
   } else if (badgeClass === 'pill error') {
-    friendly = 'No pudimos procesar el pago ❌. Puedes reintentarlo ahora o elegir otro método.';
+    friendly = 'No pudimos procesar el pago ❌. Puedes reintentarlo más tarde o regresar yelegir otro método.';
   }
   if (msg) msg.textContent = friendly;
 
@@ -1021,7 +1082,8 @@ function updatePriceUI(ctx) {
   const wa = document.getElementById('share-wa');
   const mail = document.getElementById('share-mail');
   if (actions && dl && wa && mail) {
-    if (order.status === "delivered" && order.delivery?.fileUrl) {
+    const normSt = normalizeOrderStatus(order.status); // ← usar normalizado
+    if (normSt === "delivered" && order.delivery?.fileUrl) {
       const url = order.delivery.fileUrl;
       dl.href = url; dl.target = '_blank'; dl.rel = 'noopener';
       const waMsg = `Orden: ${order.id}\nTrámite: ${order.serviceName || ""}\nCertificado listo: ${url}`;
@@ -1034,7 +1096,6 @@ function updatePriceUI(ctx) {
       actions.style.display = 'none';
     }
   }
-
   // "Sigue tu trámite"
   const follow = document.getElementById('followup-card');
   if (follow) follow.style.display = isTerminalOrder(order) ? 'none' : '';
@@ -1059,34 +1120,47 @@ document.addEventListener('DOMContentLoaded', async () => {
   const orderIdFromQS = q.get('orderId');
   if (orderIdFromQS) {
     try {
-      let st = await api(`orders?id=${encodeURIComponent(orderIdFromQS)}`);
-      renderStatus(st);
-      show(S.status);
+      let st = await api(`orders?id=${encodeURIComponent(orderIdFromQS)}`, { ignore404: true, silent: true });
+      if (!st) {
+        // limpiar URL y seguir en catálogo
+        q.delete('orderId'); q.delete('id'); q.delete('reference'); q.delete('ref');
+        history.replaceState({}, document.title, `${location.pathname}${q.toString() ? `?${q.toString()}` : ''}${location.hash || ''}`);
+      } else {
+        renderStatus(st);
+        // === ACTUALIZA HISTORIAL AUTOMÁTICAMENTE ===
+        updateHistoryStatus(orderIdFromQS, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
+        // ===========================================
+        show(S.status);
 
-      // Reconfirmación + polling si sigue pendiente (Wompi)
-      const isWompi = st?.payment?.mode === 'wompi' || st?.paymentMode === 'wompi';
-      const isPending = (normalizePayment(st.payment) === 'pending');
-      if (isWompi && isPending) {
-        const txId = q.get('id') || q.get('transactionId') || '';
-        const ref  = q.get('reference') || q.get('ref') || '';
-        try {
-          const parts = [];
-          if (txId) parts.push(`transactionId=${encodeURIComponent(txId)}`);
-          if (ref)  parts.push(`reference=${encodeURIComponent(ref)}`);
-          if (parts.length) await api(`payments_confirm?${parts.join('&')}`);
-        } catch (e) { console.warn('[return] reconfirm skip:', e); }
-
-        for (let i = 0; i < 3; i++) {
-          await new Promise(r => setTimeout(r, 600 * (i + 1)));
+        // Reconfirmación + polling si sigue pendiente (Wompi)
+        const isWompi = st?.payment?.mode === 'wompi' || st?.paymentMode === 'wompi';
+        const isPending = (normalizePayment(st.payment) === 'pending');
+        if (isWompi && isPending) {
+          const txId = q.get('id') || q.get('transactionId') || '';
+          const ref  = q.get('reference') || q.get('ref') || '';
           try {
-            st = await api(`orders?id=${encodeURIComponent(orderIdFromQS)}`);
-            renderStatus(st);
-            if (normalizePayment(st.payment) !== 'pending') break;
-          } catch {}
+            const parts = [];
+            if (txId) parts.push(`transactionId=${encodeURIComponent(txId)}`);
+            if (ref)  parts.push(`reference=${encodeURIComponent(ref)}`);
+            if (parts.length) await api(`payments_confirm?${parts.join('&')}`);
+          } catch (e) { console.warn('[return] reconfirm skip:', e); }
+          for (let i = 0; i < 3; i++) {
+            await new Promise(r => setTimeout(r, 600 * (i + 1)));
+            try {
+              st = await api(`orders?id=${encodeURIComponent(orderIdFromQS)}`, { ignore404: true, silent: true });
+              if (!st) break;
+              renderStatus(st);
+              // === REFRESCA HISTORIAL EN CADA PULL ===
+              updateHistoryStatus(orderIdFromQS, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
+              // =======================================
+             
+              if (normalizePayment(st.payment) !== 'pending') break;
+            } catch {}
+          }
         }
       }
-    } catch (e) {
-      showBanner('No se pudo cargar el estado de la orden.', 'error');
+    } catch {
+      // silencioso en primer arranque
     }
   }
 

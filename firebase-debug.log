@@ -1,17 +1,11 @@
-[debug] [2025-10-16T11:56:19.805Z] ----------------------------------------------------------------------
-[debug] [2025-10-16T11:56:19.809Z] Command:       C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\firebase-tools\lib\bin\firebase.js emulators:start --import ./emulator-data --export-on-exit
-[debug] [2025-10-16T11:56:19.809Z] CLI Version:   14.15.1
-[debug] [2025-10-16T11:56:19.809Z] Platform:      win32
-[debug] [2025-10-16T11:56:19.809Z] Node Version:  v20.19.1
-[debug] [2025-10-16T11:56:19.809Z] Time:          Thu Oct 16 2025 06:56:19 GMT-0500 (hora estándar de Colombia)
-[debug] [2025-10-16T11:56:19.810Z] ----------------------------------------------------------------------
+[debug] [2025-10-27T12:39:51.679Z] ----------------------------------------------------------------------
+[debug] [2025-10-27T12:39:51.682Z] Command:       C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\firebase-tools\lib\bin\firebase.js emulators:start --import ./emulator-data --export-on-exit
+[debug] [2025-10-27T12:39:51.683Z] CLI Version:   14.15.1
+[debug] [2025-10-27T12:39:51.683Z] Platform:      win32
+[debug] [2025-10-27T12:39:51.683Z] Node Version:  v20.19.1
+[debug] [2025-10-27T12:39:51.683Z] Time:          Mon Oct 27 2025 07:39:51 GMT-0500 (hora estándar de Colombia)
+[debug] [2025-10-27T12:39:51.683Z] ----------------------------------------------------------------------
 [debug] 
-[debug] [2025-10-16T11:56:19.812Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
-[debug] [2025-10-16T11:56:20.092Z] Object "/emulators" in "firebase.json" has unknown property: {"additionalProperty":"import"}
-[debug] [2025-10-16T11:56:20.098Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
-[debug] [2025-10-16T11:56:20.099Z] > authorizing via signed-in user (the.piece.maker@gmail.com)
-[debug] [2025-10-16T11:56:20.187Z] openjdk version "21.0.8" 2025-07-15 LTS
-OpenJDK Runtime Environment Temurin-21.0.8+9 (build 21.0.8+9-LTS)
-
-[debug] [2025-10-16T11:56:20.187Z] OpenJDK 64-Bit Server VM Temurin-21.0.8+9 (build 21.0.8+9-LTS, mixed mode, sharing)
-
+[debug] [2025-10-27T12:39:51.931Z] Object "/emulators" in "firebase.json" has unknown property: {"additionalProperty":"import"}
+[debug] [2025-10-27T12:39:51.936Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-10-27T12:39:51.937Z] > authorizing via signed-in user (the.piece.maker@gmail.com)

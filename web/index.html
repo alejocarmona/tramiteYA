@@ -124,7 +124,17 @@ body {
       font-size: 15px;
       box-sizing: border-box;
       outline: none;
+          /* agregado: asegura que los <a class="btn"> no se subrayen */
+      text-decoration: none;
     }
+  /* agregado: refuerzo para enlaces en acciones de certificado y estados del anchor */
+  #cert-actions a,
+  a.btn,
+  a.btn:hover,
+  a.btn:focus,
+  a.btn:active,
+  a.btn:visited { text-decoration: none; }
+
     .btn:hover {
       background: #0284c7;
     }

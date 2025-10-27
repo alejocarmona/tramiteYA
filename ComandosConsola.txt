@@ -3,7 +3,7 @@ firebase emulators:start
 firebase emulators:start --import "./emulator-data" --export-on-exit
 
 
-
+git commit -m "integracion con wompi sandbox al 100"
 Cambias UI (index.html, main.js, css): solo guardar y refrescar navegador.
 
 Cambias backend (src/*.ts): correr npm run build y reiniciar el emulador.
@@ -63,24 +63,34 @@ Analiza en busqueda de las causas raices de este error E Identifica que micro ca
 aplicar y exactamente en que archivos y en que posicion, para lograr coherencia con el estado de wompi y la aplicación.
 Ten en cuenta que antes de presionar el boton de regresar al comercio, esto se registra en Network:
 
-Al regresar al comercio desde wompi, se esta presentando este error: {"error":"Transaction not found in Wompi"} y la orden se crea con estado: "Pago pendiente",
-que coincide con estado seleccionado en Wompi.
-En consola del navegador se registra esto:
-:5001/apptramiteya/u…760024928810-1qtq:1 
- Failed to load resource: the server responded with a status of 404 (Not Found)
 
-Al regresar al comercio desde wompi, con un estado de "Pago rechazado" se esta mostrando "Detalle de cobro" con los valores del tramite.
-Se deberia cambiar el titulo “Detalle de cobro” y "Total", de esta forma:
--Pagado: título “Detalle de cobro”, etiqueta del total “Total pagado”.
--Pendiente / Rechazado / Cancelado / Error / Otro: título “Resumen de costos”, etiqueta del total “Total del trámite (No cobrado).
-Analiza en busqueda de las causas raices de este error E Identifica que micro cambios pequeños y quirurgicos se deben 
-aplicar para realizar este ajuste:
+Al realizar un pago en con resultado exitoso y regresar a la pagina principal, en el historial, seccion: "Mis solicitudes (en este dispositivo)" 
+los estados del pago eran "Estado: queued" o "Estado: delivered".
+Pero ahora los manejamos en español.
+Cuando ahora eel estado sea "Estado: Entregado", la aplicacion debe tener el mismo comportamiento de cuando era "Estado: delivered", donde al menos se habilitaban las opciones de descarga del documento y el boton "Revisar estado" pasaba a Finalizado. 
+
+Cuando se habilitan las opciones Acciones de certificado (descargar/compartir), el texto se muestra subrayado, quiero quitar el subrayado.
+
+En el catalogo de tramites, para cada item se esta mostrando "Entrega aprox: 24 h • Canales: email, whatsapp" quiero cambiarlo por el description que se encuentra en la collection para cada services.
+Analiza como  aplicar este cambio e Identifica que micro cambios pequeños y quirurgicos se deben 
+aplicar para realizar este ajuste.
 Tu salida debe seguir esta estructura:
-Archivos:
+Archivo a modificar:
 funcion:
 linea:
-problema evidenciado:
+problema evidenciado/necesidad:
 descripcion del cambio quirurgico a realizar.
+
+Analiza la causa raiz de este problema y que cambios  aplicar para solucionarlos  e Identifica que micro cambios pequeños y quirurgicos se deben 
+aplicar para realizar este ajuste:
+Tu salida debe seguir esta estructura para cada ajuste a realizar:
+Archivo a modificar (enlace)
+funcion (enlace):
+linea (enlace):
+problema evidenciado/necesidad:
+descripcion del cambio quirurgico a realizar.
+
+
 
 En el simulador de pagos tenemos 4 posibles opciones: "Pago exitoso", "Saldo insuficiente", "Cancelador por el usuario", "Error técnico".
 La seccion de status-hero debe ser coherente con la opcion de pago seleccionado en el simulador, o por wompi. Pero en este momento status-hero esta quemado con el estado de "¡Pago aprobado!".
