@@ -4,10 +4,11 @@
     "public": "web",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
-      { "source": "/payments_init",   "function": "payments_init" },
-      { "source": "/payments_confirm","function": "payments_confirm" },
-      { "source": "/services", "function": "services" },
-      { "source": "/orders", "function": "orders" }
+      { "source": "/notify", "function": { "region": "us-central1", "functionId": "notify" } },
+      { "source": "/payments_init",    "function": "payments_init" },
+      { "source": "/payments_confirm", "function": "payments_confirm" },
+      { "source": "/services",         "function": "services" },
+      { "source": "/orders",           "function": "orders" }
     ]
   },
   "firestore": {

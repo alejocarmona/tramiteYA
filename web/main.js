@@ -21,6 +21,60 @@ const IS_DEBUG = QS.get('debug') === '1';
   document.head.appendChild(style);
 })();
 
+// ...existing code...
+const NOTIFY_WEBHOOK = "https://hooks.zapier.com/hooks/catch/25211343/ui7n435/";
+
+// Puedes conservar NOTIFY_WEBHOOK para pruebas manuales, pero usa el endpoint del backend:
+async function notifyTeam(payload) {
+  const appBase = location.origin + location.pathname;
+  const appLink = `${appBase}?open=${encodeURIComponent(payload.orderId || '')}`;
+  const body = {
+    app: { env: (new URLSearchParams(location.search).get('env') || 'prod') },
+    appLink,
+    ...payload
+  };
+
+  // Misma-origen → no hay CORS ni preflight
+  await fetch('/notify', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify(body)
+  });
+}
+// ...existing code...
+
+// NUEVO: notifica una sola vez si pago aprobado y estado encolado/entregado
+function maybeNotifyPaid(order) {
+  try {
+    if (!order || !order.id) return;
+    const KEY = "tya_mail_paid_notified";
+    const seen = new Set(JSON.parse(localStorage.getItem(KEY) || "[]"));
+    if (seen.has(order.id)) return;
+
+    const pay = normalizePayment(order.payment);         // 'paid'|'pending'|'rejected'...
+    const st  = (typeof normalizeOrderStatus === 'function')
+      ? normalizeOrderStatus(order.status)
+      : String(order.status || '').toLowerCase();
+
+    if (pay === 'paid' && (st === 'queued' || st === 'delivered')) {
+      notifyTeam({
+        type: "order_paid",
+        orderId: order.id,
+        serviceName: order.serviceName || "",
+        contact: order.contact || {},
+        price: order.price || order.price_breakdown || {}
+      }).catch(e=>console.warn('[notifyTeam]', e));
+      seen.add(order.id);
+      localStorage.setItem(KEY, JSON.stringify([...seen].slice(0,100)));
+    }
+  } catch (e) {
+    console.warn('[maybeNotifyPaid]', e);
+  }
+}
+// ...existing code...
+
+
+
 /* =====================
    Config & Init
 ===================== */
@@ -131,32 +185,48 @@ function setFabWhatsApp(orderOrNull) {
    Config (Functions base URL)
 ===================== */
 // ...existing code...
+// ...existing code...
 function functionUrl(name) {
-  const qp = new URLSearchParams(location.search);
+  const qp  = new URLSearchParams(location.search);
   const ENV = qp.get('env');
 
+  // Helper: normaliza base (quita / finales y elimina /us-central1 cuando no es emulador)
+  const normalizeBase = (base, isEmu) => {
+    let out = String(base || '').replace(/\/+$/,'');
+    if (!isEmu) out = out.replace(/\/us-central1$/i, ''); // ← clave
+    return out;
+  };
+
+  // Override manual
   if (window.__API_BASE) {
-    console.info('API base (override):', window.__API_BASE);
-    return `${window.__API_BASE}/${name}`;
+    const base = normalizeBase(window.__API_BASE, false);
+    console.info('API base (override):', base);
+    return `${base}/${name}`;
   }
 
-  // Preferir same-origin en Hosting (evita CORS)
-  if (!ENV && (location.port === '5000' || location.hostname.endsWith('.web.app') || location.hostname.endsWith('.firebaseapp.com'))) {
+  // Same-origin en Hosting
+  const isHosting = (location.port === '5000') ||
+    location.hostname.endsWith('.web.app') ||
+    location.hostname.endsWith('.firebaseapp.com');
+  if (!ENV && isHosting) {
     console.info('API base: (hosting rewrite)');
-    return `/${name}`; // ← same-origin
+    return `/${name}`;
   }
 
+  // Emulador o prod explícito
   let base;
   if (ENV === 'emulator') {
-    base = `http://${location.hostname}:5001/apptramiteya/us-central1`;
+    base = normalizeBase(`http://${location.hostname}:5001/apptramiteya/us-central1`, true);
   } else if (ENV === 'prod') {
-    base = 'https://us-central1-apptramiteya.cloudfunctions.net';
+    base = normalizeBase('https://us-central1-apptramiteya.cloudfunctions.net', false);
   } else {
-    base = `http://${location.hostname}:5001/apptramiteya/us-central1`;
+    base = normalizeBase(`http://${location.hostname}:5001/apptramiteya/us-central1`, true);
   }
-  console.info('API base:', base);
-  return `${base}/${name}`;
+  const url = `${base}/${name}`;
+  console.info('API url:', url);
+  return url;
 }
+// ...existing code...
 // ...existing code...
 
 /* =====================
@@ -669,6 +739,11 @@ if (payInit?.mode === 'mock') {
     // consultamos el estado y pintamos (dispara confeti si ya está "paid")
     const status = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
     renderStatus(status);
+    //nuevo para las notificaciones
+// Reemplazo: notificar si aplica usando helper (dedup por localStorage)
+  maybeNotifyPaid(status);
+
+    //fin codigo nuew para notificaciones
     disableFormInputs(false); lockHeader(false); lockNavigation(false);
     setBtnLoading(S.btnCreate, false, "", "Crear orden");
     show(S.status);
@@ -1130,6 +1205,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         // === ACTUALIZA HISTORIAL AUTOMÁTICAMENTE ===
         updateHistoryStatus(orderIdFromQS, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
         // ===========================================
+                maybeNotifyPaid(st);
+
         show(S.status);
 
         // Reconfirmación + polling si sigue pendiente (Wompi)
@@ -1153,7 +1230,8 @@ document.addEventListener('DOMContentLoaded', async () => {
               // === REFRESCA HISTORIAL EN CADA PULL ===
               updateHistoryStatus(orderIdFromQS, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
               // =======================================
-             
+                         maybeNotifyPaid(st);       // ← agregado en cada actualización
+
               if (normalizePayment(st.payment) !== 'pending') break;
             } catch {}
           }
@@ -1244,6 +1322,11 @@ document.getElementById('bottom-nav')?.addEventListener('click', (e) => {
   }
   if (where === 'about') {
     document.getElementById('about-modal')?.showModal();
+  }
+  // NUEVO: acción del botón "Contacto"
+  if (where === 'contact') {
+    const msg = buildWAOrderMessage(null);
+    if (hasWhatsAppNumber()) window.open(buildWhatsAppLink(msg), '_blank');
   }
 });
 

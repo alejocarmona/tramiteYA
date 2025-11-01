@@ -11,7 +11,7 @@
 
   <title>TrámiteYA</title>
   <style>
-    :root{ --bottom-nav-h: 72px; }
+   :root{ --bottom-nav-h: 56px; }  /* antes 72px */
     :root {
       --bg: #F7F7F7;
       --surface: #FFFFFF;
@@ -63,6 +63,31 @@ body {
       font-size: 18px;
       letter-spacing: 0.5px;
     }
+/* INSERTAR debajo de las reglas de header y header .brand */
+/* REEMPLAZAR esta línea existente: 
+   header .brand{ display:flex; flex-direction:column; line-height:1.1; } */
+
+/* Nuevo: la marca ahora alinea ícono + textos en fila */
+header .brand{ display:flex; align-items:center; gap:8px; }
+
+/* Nuevo: el bloque de textos conserva la columna */
+header .brand__text{ display:flex; flex-direction:column; line-height:1.1; }
+
+/* Tamaño del ícono principal de la marca */
+  /* Tamaño del ícono principal de la marca (ajustado) */
+  header .brand__logo{
+    width: 40px;           /* antes 28px */
+    height: 40px;          /* antes 28px */
+    border-radius: 8px;    /* leve ajuste para mantener bordes agradables */
+    object-fit: cover;
+    display: block;
+  }
+
+header .brand__title{ font-weight:800; font-size:18px; letter-spacing:.2px; }
+header .brand__subtitle{ font-size:12px; line-height:1.2; margin-top:2px; }
+/* Opcional: si en pantallas muy pequeñas quieres ahorrar espacio, descomenta: */
+/* @media (max-width:360px){ header .brand__subtitle{ display:none; } } */
+
     header .actions {
       display: flex;
       gap: 8px;
@@ -346,6 +371,12 @@ body {
 .fab-whatsapp img{
   width: 28px; height: 28px; display: block;
 }
+/* INSERTAR: desactiva visual y funcionalmente el FAB sin eliminarlo */
+.fab-whatsapp{
+  display: none !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+}
 
 /* Evita que reglas globales estiren el ícono */
 .fab-whatsapp * { max-width: none !important; max-height: none !important; }
@@ -473,10 +504,10 @@ body {
 #bottom-nav {
   position: fixed;
   left: 0; right: 0; bottom: 0;
-  min-height: var(--bottom-nav-h);                 /* nuevo */
-  padding: 8px max(env(safe-area-inset-left),16px) calc(8px + env(safe-area-inset-bottom)) max(env(safe-area-inset-right),16px);
+  min-height: var(--bottom-nav-h);
+  padding: 6px max(env(safe-area-inset-left),16px) calc(6px + env(safe-area-inset-bottom)) max(env(safe-area-inset-right),16px); /* antes 8px */
   background: #0b1221;
-  display: grid; grid-template-columns: repeat(3,1fr);
+  display: grid; grid-template-columns: repeat(4,1fr); /* ← antes: repeat(3,1fr) */
   gap: 8px; align-items: center;
   box-shadow: 0 -8px 24px rgba(0,0,0,.18);
   z-index: 50;
@@ -490,7 +521,7 @@ body {
 }
 /* REEMPLAZAR tamaño de iconos (en el bloque #bottom-nav button img).
    Efecto: iconos más grandes en la barra inferior */
-#bottom-nav button img { width: 28px; height: 28px; }
+#bottom-nav button img { width: 36px; height: 36px; }  /*  antes 28px */
 #bottom-nav button:active { transform: translateY(1px); }
 #bottom-nav button:hover, #bottom-nav button:focus-visible {
   background: rgba(255,255,255,.08); outline: none;
@@ -522,20 +553,24 @@ dialog#about-modal .muted { color: #64748b; font-size: 12px; }
 </head>
 <body>
 <header>
-  <div class="brand">TrámiteYA</div>
+  <!-- REEMPLAZAR este bloque dentro de <header> -->
+  <!-- Mantener solo este bloque -->
+  <div class="brand">
+    <img src="./img/expediente.png" alt="" class="brand__logo">
+    <div class="brand__text">
+      <span class="brand__title">TrámiteYA</span>
+      <span class="brand__subtitle muted">Tu asistente para trámites y certificados en Colombia</span>
+    </div>
+  </div>
+
   <div class="actions">
-    <!-- <button id="btn-refresh" class="btn small" title="Recargar catálogo" aria-label="Recargar catálogo">⟳</button>
-    <button id="btn-history" class="btn small" title="Mis solicitudes" aria-label="Mis solicitudes">🗂</button>-->
-
-<button id="btn-refresh" class="btn-icon" title="Recargar catálogo">
-  <img src="./img/actualizar.png" alt="Recargar catálogo">
-</button>
-
-
-<button id="btn-history" class="btn-icon" title="Mis solicitudes">
-  <img src="./img/historial.png" alt="Mis solicitudes">
-</button>
-
+    <!-- botones existentes -->
+    <button id="btn-refresh" class="btn-icon" title="Recargar catálogo">
+      <img src="./img/actualizar.png" alt="Recargar catálogo">
+    </button>
+    <button id="btn-history" class="btn-icon" title="Mis solicitudes">
+      <img src="./img/historial.png" alt="Mis solicitudes">
+    </button>
   </div>
 </header>
 
@@ -832,15 +867,19 @@ document.addEventListener('DOMContentLoaded', () => {
 <nav id="bottom-nav" aria-label="Navegación principal">
   <button data-nav="catalog" aria-label="Catálogo">
     <img src="./img/actualizar.png" alt="" />
-    <span>Catálogo</span>
+    <span class="sr-only">Catálogo</span>          <!-- agregado -->
   </button>
   <button data-nav="history" aria-label="Mis solicitudes">
     <img src="./img/historial.png" alt="" />
-    <span>Historial</span>
+    <span class="sr-only">Historial</span>         <!-- agregado -->
   </button>
   <button data-nav="about" aria-label="Quiénes somos">
     <img src="./img/acerca-de.png" alt="" />
-    <span>Nosotros</span>
+    <span class="sr-only">Nosotros</span>          <!-- agregado -->
+  </button>
+  <button data-nav="contact" aria-label="Contacto por WhatsApp">
+    <img src="./img/whatsapp.png" alt="" />
+    <span class="sr-only">Contacto</span>          <!-- agregado -->
   </button>
 </nav>
 
