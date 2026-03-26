@@ -3,13 +3,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.orders = exports.services = exports.config_public = exports.payments_confirm = exports.payments_init = exports.notify = void 0;
+exports.orders = exports.services = exports.config_public = exports.payments_confirm = exports.payments_init = exports.notify = exports.health = void 0;
 // functions/src/index.ts
 const cors_1 = __importDefault(require("cors"));
 const https_1 = require("firebase-functions/v2/https");
 // Importa handlers (usa sufijo .js para ESM, igual que en orders.ts)
 const services_js_1 = require("./services.js");
 const orders_js_1 = require("./orders.js");
+var health_1 = require("./health");
+Object.defineProperty(exports, "health", { enumerable: true, get: function () { return health_1.health; } });
 // ...existing code...
 exports.notify = (0, https_1.onRequest)({ cors: ["https://<tu-sitio>.web.app", "http://localhost:5000"] }, async (req, res) => {
     if (req.method === 'OPTIONS') {

@@ -51,3 +51,26 @@ export interface Flags {
   payments: { useMock: boolean };
   maintenance?: { enabled: boolean; message?: string };
 }
+
+// --- Configuración unificada de pagos ---
+
+export type PaymentEnvName = "mock" | "test" | "prod";
+
+export interface WompiEnvConfig {
+  publicKey: string;
+  secretKey: string;
+  integritySecret: string;
+  eventsSecret?: string;
+  apiUrl: string;          // "https://api-sandbox.wompi.co" o "https://api.wompi.co"
+  checkoutUrlBase: string; // "https://checkout.wompi.co/p/"
+  returnUrl: string;       // URL de retorno tras pago
+}
+
+export interface PaymentsConfig {
+  activeEnv: PaymentEnvName;
+  environments: {
+    mock: Record<string, never>;
+    test: WompiEnvConfig;
+    prod: WompiEnvConfig;
+  };
+}

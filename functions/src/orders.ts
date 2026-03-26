@@ -1,7 +1,7 @@
 // functions/src/orders.ts
 import { Request, Response } from "express";
 import { ensureFirebase } from "./utils.js";
-import { Flags, Order, Price, Service } from "./types.js";
+import { Order, Price, Service } from "./types.js";
 
 /**
  * POST /orders
@@ -57,15 +57,14 @@ export async function createOrder(req: Request, res: Response) {
       ),
     } as Price);
 
-// Flags: mock/wompi
-let flags: Partial<Flags> = {};
+// Leer ambiente de pagos desde config/payments
+let paymentMode: "mock" | "wompi" = "mock";
 try {
-  const fg = await db.collection("config").doc("public").get(); // CAMBIO: config/public
-  flags = (fg.exists ? (fg.data() as Partial<Flags>) : {}) || {};
-} catch { /* ignora errores de flags */ }
-const paymentMode =
-  (flags as any)?.payments?.useMock === true ? "mock" : "wompi"; // CAMBIO: true = mock, false/undefined = wompi
-// ...existing code...
+  const pcSnap = await db.collection("config").doc("payments").get();
+  const pc = pcSnap.exists ? pcSnap.data() : null;
+  const activeEnv = pc?.activeEnv || "mock";
+  paymentMode = activeEnv === "mock" ? "mock" : "wompi";
+} catch { /* default mock */ }
 
   // Construir orden con defaults robustos
   const now = new Date().toISOString();

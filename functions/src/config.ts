@@ -11,12 +11,20 @@ function cors(req: Request, res: Response): boolean {
   return false;
 }
 
-/** Devuelve config pública (Firestore: config/public) */
+/** Devuelve config pública (nunca expone claves secretas) */
 export const config_public = onRequest(async (req: Request, res: Response) => {
   if (cors(req, res)) return;
   const db = ensureFirebase();
-  const snap = await db.collection("config").doc("public").get();
+
+  const [publicSnap, paymentsSnap] = await Promise.all([
+    db.collection("config").doc("public").get(),
+    db.collection("config").doc("payments").get(),
+  ]);
+
   res.json({
-    whatsappNumber: (snap.exists && snap.get("whatsappNumber")) || ""
+    whatsappNumber: (publicSnap.exists && publicSnap.get("whatsappNumber")) || "",
+    supportEmail: (publicSnap.exists && publicSnap.get("supportEmail")) || "",
+    appName: (publicSnap.exists && publicSnap.get("appName")) || "TrámiteYA",
+    paymentEnv: (paymentsSnap.exists && paymentsSnap.get("activeEnv")) || "mock",
   });
 });

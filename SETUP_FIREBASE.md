@@ -26,8 +26,8 @@
 ```json
 {
   "wompi": {
-    "secretKey": "prv_test_REEMPLAZA_CON_TU_SECRET_KEY",
-    "integritySecret": "test_integrity_REEMPLAZA_CON_TU_INTEGRITY_SECRET",
+    "secretKey": "prv_test_5tIRjuylSGEcO8IUN1jieKw7LwVndWsZ",
+    "integritySecret": "test_integrity_grW3e9XLu4VZJiEYCsFh9wMNaC0HLpda",
     "eventsSecret": "REEMPLAZA_CON_TU_EVENTS_SECRET"
   }
 }
@@ -41,7 +41,7 @@
 ```json
 {
   "payments": {
-    "useMock": true
+    "useMock": false
   }
 }
 ```
@@ -50,8 +50,8 @@
 ```json
 {
   "wompi": {
-    "secretKey": "prv_test_REEMPLAZA_CON_TU_SECRET_KEY",
-    "integritySecret": "test_integrity_REEMPLAZA_CON_TU_INTEGRITY_SECRET",
+    "secretKey": "prv_test_5tIRjuylSGEcO8IUN1jieKw7LwVndWsZ",
+    "integritySecret": "test_integrity_grW3e9XLu4VZJiEYCsFh9wMNaC0HLpda",
     "eventsSecret": "REEMPLAZA_CON_TU_EVENTS_SECRET"
   }
 }

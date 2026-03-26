@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TrámiteYA</string>
+    <string name="title_activity_main">TrámiteYA</string>
+    <string name="package_name">com.tramiteya.app</string>
+    <string name="custom_url_scheme">com.tramiteya.app</string>
+</resources>

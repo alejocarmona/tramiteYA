@@ -7,6 +7,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0EA5E9">
+<link rel="icon" type="image/png" href="favicon.png">
 <link rel="apple-touch-icon" href="img/icon-192.png">
 
   <title>TrámiteYA</title>
@@ -329,6 +330,17 @@ header .brand__subtitle{ font-size:12px; line-height:1.2; margin-top:2px; }
 /* Asegura que las tarjetas ocupen el 100% de su celda */
 #services .card{ width:100%; box-sizing:border-box; }
 
+    /* Spinner de carga */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { width:32px; height:32px; border:3px solid #e2e8f0; border-top-color:var(--primary); border-radius:50%; animation:spin .8s linear infinite; }
+
+    /* Overlay de carga global */
+    .loading-overlay {
+      position:fixed; inset:0; z-index:100;
+      background:rgba(247,247,247,.85);
+      display:flex; align-items:center; justify-content:center; flex-direction:column; gap:12px;
+    }
+    .loading-overlay .spinner { width:40px; height:40px; }
   </style>
   <style>
     body.on-form #btn-reload,
@@ -527,13 +539,23 @@ header .brand__subtitle{ font-size:12px; line-height:1.2; margin-top:2px; }
   font: 600 12px/1 Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial;
   transition: background-color .18s ease, transform .18s ease;
 }
-/* REEMPLAZAR tamaño de iconos (en el bloque #bottom-nav button img).
-   Efecto: iconos más grandes en la barra inferior */
-#bottom-nav button img { width: 36px; height: 36px; }  /*  antes 28px */
+/* Iconos de la barra inferior */
+#bottom-nav button img { width: 28px; height: 28px; }
 #bottom-nav button:active { transform: translateY(1px); }
 #bottom-nav button:hover, #bottom-nav button:focus-visible {
   background: rgba(255,255,255,.08); outline: none;
 }
+/* Labels visibles en bottom nav */
+.nav-label {
+  font-size: 11px; font-weight: 600; opacity: .85;
+  display: block; margin-top: 2px;
+}
+/* Tab activa */
+#bottom-nav button.active {
+  color: #fff; background: rgba(255,255,255,.12);
+}
+#bottom-nav button.active .nav-label { opacity: 1; }
+#bottom-nav button.active img { filter: brightness(1.3); }
 
 @media (min-width: 1024px) {
   #bottom-nav { display: none; }           /* oculta barra en desktop */
@@ -840,7 +862,15 @@ dialog#about-modal .muted { color: #64748b; font-size: 12px; }
 
 </main>
 
-<script defer src="./main.js?v=17"></script>
+<script defer src="./main.js?v=18"></script>
+<script>
+  // Registrar Service Worker
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+  }
+</script>
 <script>
 // Helper para eliminar duplicados del bloque de contacto
 function ensureSingleContactBlock() {
@@ -875,19 +905,19 @@ document.addEventListener('DOMContentLoaded', () => {
 <nav id="bottom-nav" aria-label="Navegación principal">
   <button data-nav="catalog" aria-label="Catálogo">
     <img src="./img/actualizar.png" alt="" />
-    <span class="sr-only">Catálogo</span>          <!-- agregado -->
+    <span class="nav-label">Trámites</span>
   </button>
   <button data-nav="history" aria-label="Mis solicitudes">
     <img src="./img/historial.png" alt="" />
-    <span class="sr-only">Historial</span>         <!-- agregado -->
+    <span class="nav-label">Historial</span>
   </button>
   <button data-nav="about" aria-label="Quiénes somos">
     <img src="./img/acerca-de.png" alt="" />
-    <span class="sr-only">Nosotros</span>          <!-- agregado -->
+    <span class="nav-label">Nosotros</span>
   </button>
   <button data-nav="contact" aria-label="Contacto por WhatsApp">
     <img src="./img/whatsapp.png" alt="" />
-    <span class="sr-only">Contacto</span>          <!-- agregado -->
+    <span class="nav-label">Contacto</span>
   </button>
 </nav>
 

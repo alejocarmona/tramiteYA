@@ -1,0 +1,39 @@
+{
+  "name": "tramiteya",
+  "version": "1.0.0",
+  "description": "Aplicación para digitalizar trámites cotidianos en Colombia.  \r Construida sobre **Firebase (Firestore, Functions, Hosting, Storage)** con un **frontend PWA ligero**.",
+  "main": "index.js",
+  "scripts": {
+    "build:functions": "cd functions && npm run build",
+    "cap:sync": "npx cap sync android",
+    "cap:open": "npx cap open android",
+    "cap:run": "npx cap run android",
+    "deploy": "npm run build:functions && firebase deploy",
+    "deploy:hosting": "firebase deploy --only hosting",
+    "deploy:functions": "npm run build:functions && firebase deploy --only functions",
+    "icons": "node scripts/generate-icons.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alejocarmona/tramiteYA.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/alejocarmona/tramiteYA/issues"
+  },
+  "homepage": "https://github.com/alejocarmona/tramiteYA#readme",
+  "dependencies": {
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/browser": "^8.0.3",
+    "@capacitor/cli": "^8.3.0",
+    "@capacitor/core": "^8.3.0",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2"
+  },
+  "devDependencies": {
+    "sharp": "^0.34.5"
+  }
+}

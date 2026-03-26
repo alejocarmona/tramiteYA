@@ -43,15 +43,15 @@ async function createOrder(req, res) {
                     Number(svc.fee ?? 0) +
                     Number(svc.iva ?? 0)),
         };
-    // Flags: mock/wompi
-    let flags = {};
+    // Leer ambiente de pagos desde config/payments
+    let paymentMode = "mock";
     try {
-        const fg = await db.collection("config").doc("public").get(); // CAMBIO: config/public
-        flags = (fg.exists ? fg.data() : {}) || {};
+        const pcSnap = await db.collection("config").doc("payments").get();
+        const pc = pcSnap.exists ? pcSnap.data() : null;
+        const activeEnv = pc?.activeEnv || "mock";
+        paymentMode = activeEnv === "mock" ? "mock" : "wompi";
     }
-    catch { /* ignora errores de flags */ }
-    const paymentMode = flags?.payments?.useMock === true ? "mock" : "wompi"; // CAMBIO: true = mock, false/undefined = wompi
-    // ...existing code...
+    catch { /* default mock */ }
     // Construir orden con defaults robustos
     const now = new Date().toISOString();
     const ref = db.collection("orders").doc();

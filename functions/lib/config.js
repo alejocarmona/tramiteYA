@@ -14,13 +14,19 @@ function cors(req, res) {
     }
     return false;
 }
-/** Devuelve config pública (Firestore: config/public) */
+/** Devuelve config pública (nunca expone claves secretas) */
 exports.config_public = (0, https_1.onRequest)(async (req, res) => {
     if (cors(req, res))
         return;
     const db = (0, utils_1.ensureFirebase)();
-    const snap = await db.collection("config").doc("public").get();
+    const [publicSnap, paymentsSnap] = await Promise.all([
+        db.collection("config").doc("public").get(),
+        db.collection("config").doc("payments").get(),
+    ]);
     res.json({
-        whatsappNumber: (snap.exists && snap.get("whatsappNumber")) || ""
+        whatsappNumber: (publicSnap.exists && publicSnap.get("whatsappNumber")) || "",
+        supportEmail: (publicSnap.exists && publicSnap.get("supportEmail")) || "",
+        appName: (publicSnap.exists && publicSnap.get("appName")) || "TrámiteYA",
+        paymentEnv: (paymentsSnap.exists && paymentsSnap.get("activeEnv")) || "mock",
     });
 });

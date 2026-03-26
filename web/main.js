@@ -6,6 +6,67 @@ const QS = new URLSearchParams(location.search);
 const IS_DEBUG = QS.get('debug') === '1';
 
 /* -------------------------------------------------
+   Capacitor: detección y helpers nativos
+--------------------------------------------------*/
+const IS_CAPACITOR = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+
+// Importa plugins de Capacitor si estamos en nativo
+let CapBrowser = null;
+let CapApp     = null;
+let CapStatusBar = null;
+if (IS_CAPACITOR) {
+  try {
+    CapBrowser   = window.Capacitor.Plugins.Browser;
+    CapApp       = window.Capacitor.Plugins.App;
+    CapStatusBar = window.Capacitor.Plugins.StatusBar;
+    // Configurar StatusBar
+    if (CapStatusBar) {
+      CapStatusBar.setBackgroundColor({ color: '#0EA5E9' });
+      CapStatusBar.setStyle({ style: 'LIGHT' });
+    }
+  } catch (e) { console.warn('Capacitor plugins init:', e); }
+
+  // Deep link listener: cuando Wompi redirige de vuelta a la app
+  if (CapApp) {
+    CapApp.addListener('appUrlOpen', async (event) => {
+      console.log('[Capacitor] appUrlOpen:', event.url);
+      try {
+        const url = new URL(event.url);
+        const params = url.searchParams;
+        const orderId   = params.get('orderId');
+        const txId      = params.get('id') || params.get('transactionId');
+        const reference = params.get('reference') || params.get('ref');
+
+        if (txId || reference) {
+          let confirmUrl = `payments_confirm?`;
+          if (txId) confirmUrl += `transactionId=${encodeURIComponent(txId)}`;
+          if (reference) confirmUrl += `${txId ? '&' : ''}reference=${encodeURIComponent(reference)}`;
+          await api(confirmUrl);
+        }
+
+        if (orderId || reference) {
+          const oid = orderId || (reference ? reference.split('-')[0] : '');
+          if (oid && typeof refreshOrderById === 'function') {
+            refreshOrderById(oid);
+          }
+        }
+      } catch (e) { console.error('[Capacitor] deep link error:', e); }
+    });
+
+    // También escuchar cuando la app vuelve al frente (por si el usuario completa pago)
+    CapApp.addListener('appStateChange', (state) => {
+      if (state.isActive && window.__lastOrderId) {
+        console.log('[Capacitor] app resumed, refreshing order:', window.__lastOrderId);
+        if (typeof refreshOrderById === 'function') {
+          refreshOrderById(window.__lastOrderId);
+        }
+      }
+    });
+  }
+  console.info('[Capacitor] Modo nativo activo');
+}
+
+/* -------------------------------------------------
    Confetti CSS auto-inject (por si falta en index)
 --------------------------------------------------*/
 (function ensureConfettiCSS(){
@@ -204,6 +265,13 @@ function functionUrl(name) {
     return `${base}/${name}`;
   }
 
+  // Capacitor: siempre apunta a Firebase Hosting en producción
+  if (IS_CAPACITOR) {
+    const base = 'https://apptramiteya.web.app';
+    console.info('API base (capacitor):', base);
+    return `${base}/${name}`;
+  }
+
   // Same-origin en Hosting
   const isHosting = (location.port === '5000') ||
     location.hostname.endsWith('.web.app') ||
@@ -326,7 +394,11 @@ async function api(path, opts = {}) {
       return null; // ← tratar como “no hay datos”
     }
     console.error('API error', { url, status: res.status, text });
-    if (!opts.silent) showBanner(text || `Error HTTP ${res.status}`, 'error', true);
+    // Mensaje amigable: nunca mostrar errores técnicos al usuario
+    const friendly = res.status === 404 ? 'Servicio no disponible momentáneamente.'
+      : res.status >= 500 ? 'Error en el servidor. Intenta de nuevo en unos segundos.'
+      : 'Ocurrió un error al procesar tu solicitud.';
+    if (!opts.silent) showBanner(friendly, 'error', true);
     throw new Error(text || `HTTP ${res.status}`);
   }
   return text ? JSON.parse(text) : {};
@@ -380,6 +452,17 @@ async function refreshHistoryStatus(id) {
     const st = await api(`orders?id=${encodeURIComponent(id)}`);
     updateHistoryStatus(id, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
   } catch {}
+}
+// Alias global para Capacitor deep link / appStateChange callbacks
+async function refreshOrderById(id) {
+  try {
+    const st = await api(`orders?id=${encodeURIComponent(id)}`);
+    updateHistoryStatus(id, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
+    // Si estamos viendo el status de esta orden, actualizar vista
+    if (window.__lastOrderId === id && typeof renderStatus === 'function') {
+      renderStatus(st);
+    }
+  } catch (e) { console.warn('[refreshOrderById]', e); }
 }
 function renderHistory() {
   const items = loadHistory();
@@ -501,11 +584,18 @@ let currentOrder   = null;
 let creating       = false;
 
 async function loadServices() {
-  S.services.innerHTML = '';
+  S.services.innerHTML = '<div style="text-align:center;padding:32px 0;color:var(--muted)"><div class="spinner" style="margin:0 auto 12px;width:32px;height:32px;border:3px solid #e2e8f0;border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite"></div>Cargando servicios…</div>';
   S.empty.classList.add('hidden');
 
-  const data = await api('services');
-  if (!data.items || !data.items.length) {
+  let data;
+  try {
+    data = await api('services');
+  } catch (e) {
+    S.services.innerHTML = '<div style="text-align:center;padding:32px 0;color:var(--danger)">No pudimos cargar los servicios.<br><button class="btn ghost" onclick="loadServices()" style="margin-top:12px">Reintentar</button></div>';
+    return;
+  }
+  if (!data || !data.items || !data.items.length) {
+    S.services.innerHTML = '';
     S.empty.classList.remove('hidden');
     return;
   }
@@ -653,8 +743,14 @@ async function createOrder() {
   lockNavigation(true);
 
   const emailOk = /^\S+@\S+\.\S+$/.test(contact.email);
-  if (!contact.name || !contact.email || !contact.phone || !emailOk) {
-    showBanner('Completa tus datos de contacto (correo válido requerido).', 'warn');
+  const phoneClean = contact.phone.replace(/[\s\-()]/g, '');
+  const phoneOk = /^(\+?57)?3\d{9}$/.test(phoneClean) || /^\d{7,10}$/.test(phoneClean);
+  if (!contact.name || !contact.email || !contact.phone || !emailOk || !phoneOk) {
+    const msgs = [];
+    if (!contact.name) msgs.push('nombre');
+    if (!contact.email || !emailOk) msgs.push('correo electrónico válido');
+    if (!contact.phone || !phoneOk) msgs.push('teléfono válido (ej: 3001234567)');
+    showBanner(`Completa: ${msgs.join(', ')}.`, 'warn');
     setBtnLoading(S.btnCreate, false, "", "Crear orden");
     disableFormInputs(false); lockHeader(false); lockNavigation(false);
     creating = false;
@@ -704,7 +800,21 @@ async function createOrder() {
       if (!payInit.checkoutUrl.includes('signature')) {
         throw new Error('URL de pago inválida: firma de integridad faltante. Verifica la configuración en Firebase.');
       }
-      // Flujo real: redirige al Checkout y termina aquí
+      // Capacitor: abrir en navegador externo del sistema (necesario para Wompi)
+      if (IS_CAPACITOR && CapBrowser) {
+        console.log('[Capacitor] Abriendo Wompi en Browser externo');
+        await CapBrowser.open({ url: payInit.checkoutUrl });
+        // No hacemos return — el pago se confirma cuando la app vuelve al frente
+        // via appStateChange listener configurado arriba
+        disableFormInputs(false); lockHeader(false); lockNavigation(false);
+        setBtnLoading(S.btnCreate, false, "", "Crear orden");
+        showBanner('Tu pago se abrió en el navegador. Vuelve aquí cuando termines.', 'info', true);
+        show(S.status);
+        const status = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
+        renderStatus(status);
+        return;
+      }
+      // Flujo web: redirige al Checkout y termina aquí
       location.href = payInit.checkoutUrl;
       return;
     }
@@ -1310,6 +1420,10 @@ document.getElementById('bottom-nav')?.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-nav]');
   if (!btn) return;
   const where = btn.dataset.nav;
+
+  // Marcar tab activa
+  document.querySelectorAll('#bottom-nav button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
 
   if (where === 'catalog') {
     show(S.list);

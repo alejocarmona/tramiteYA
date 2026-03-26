@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+functions/node_modules/
+
+# Build outputs
+functions/lib/
+
+# Android build
+android/.gradle/
+android/app/build/
+android/build/
+android/capacitor-cordova-android-plugins/build/
+
+# Capacitor generated
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+*.keystore
+*.jks
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Sharp (dev dependency artifact)
+scripts/
+
+# Logs
+*.log

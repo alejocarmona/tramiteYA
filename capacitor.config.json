@@ -1,0 +1,21 @@
+{
+  "appId": "com.tramiteya.app",
+  "appName": "TrámiteYA",
+  "webDir": "web",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "launchAutoHide": true,
+      "backgroundColor": "#0EA5E9",
+      "showSpinner": true,
+      "spinnerColor": "#FFFFFF"
+    },
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#0EA5E9"
+    }
+  }
+}

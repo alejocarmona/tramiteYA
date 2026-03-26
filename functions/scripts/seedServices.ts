@@ -5,8 +5,8 @@ initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
 async function main(){
-  // Flags globales
-  await db.collection('flags').doc('global').set({ payments: { useMock: true } }, { merge: true });
+  // NOTA: usa setupFirebase.js para el seed completo (config + servicios).
+  // Este script solo crea servicios.
 
   const services = [
     {
