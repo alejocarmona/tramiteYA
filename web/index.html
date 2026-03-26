@@ -338,6 +338,14 @@ header .brand__subtitle{ font-size:12px; line-height:1.2; margin-top:2px; }
     body.on-form #btn-reload { display: none; }
     #btn-history { display: inline-flex !important; }
 
+    /* Ocultar botones de refresh e history en móvil */
+    @media (max-width: 1023px) {
+      #btn-refresh,
+      #btn-history {
+        display: none !important;
+      }
+    }
+
     .sr-only {
   position:absolute !important;
   width:1px !important;

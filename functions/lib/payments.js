@@ -169,11 +169,18 @@ exports.payments_init = (0, https_1.onRequest)(async (req, res) => {
                 // CAMBIO: Wompi espera el parámetro 'signature:integrity'
                 // qs.set("signature", signature);
                 qs.set("signature:integrity", signature);
-                console.log("[payments_init] signature raw =", raw);
-                console.log("[payments_init] signature =", signature);
+                console.log("🔐 [payments_init] Generando firma de integridad:");
+                console.log("  - reference:", reference);
+                console.log("  - amount:", amountInCents);
+                console.log("  - currency:", currency);
+                console.log("  - integritySecret presente:", integritySecret ? "SÍ (" + integritySecret.substring(0, 10) + "...)" : "NO");
+                console.log("  - toSign:", raw);
+                console.log("  - hash generado:", signature);
             }
             else {
-                console.log("[payments_init] signature OMITIDA (integritySecret vacío o skipSignature)");
+                console.warn("⚠️ [payments_init] signature OMITIDA (integritySecret vacío o skipSignature)");
+                if (!integritySecret)
+                    console.error("❌ integritySecret NO está configurado en flags/secure");
             }
             // ...existing code...
             console.log("[payments_init] built checkout params", {
@@ -185,6 +192,12 @@ exports.payments_init = (0, https_1.onRequest)(async (req, res) => {
             });
             const checkoutUrlBase = cfg?.wompi?.checkoutUrlBase || "https://checkout.wompi.co/p/";
             const checkoutUrl = `${checkoutUrlBase}?${qs.toString()}`;
+            // Validar URL antes de retornar
+            console.log("✅ [payments_init] URL completa generada:", checkoutUrl);
+            if (!checkoutUrl.includes("signature%3Aintegrity") && !checkoutUrl.includes("signature:integrity")) {
+                console.error("❌ La firma de integridad NO se agregó a la URL");
+                return bad(res, "Error de configuración: firma de integridad faltante. Verifica flags/secure en Firebase.", 500);
+            }
             return ok(res, {
                 mode: "wompi",
                 checkoutUrl,

@@ -1,6 +1,16 @@
 Arrancar el emulador:
-firebase emulators:start
-firebase emulators:start --import "./emulator-data" --export-on-exit
+cmd /c firebase emulators:start
+cmd /c firebase emulators:start --import ./emulator-data --export-on-exit
+
+NOTA: En PowerShell, usar "cmd /c" antes del comando firebase para evitar errores de permisos
+
+Configurar Firebase (PRIMERA VEZ):
+cd functions
+npm run build
+node scripts/setupFirebase.js
+node lib/scripts/seedServices.js
+
+IMPORTANTE: Después de ejecutar setupFirebase.js, ve a Firebase Console y reemplaza las claves de Wompi en flags/secure
 
 
 git commit -m "integracion con wompi sandbox al 100"
@@ -57,9 +67,8 @@ Recurrentemene al usar Github copilot, sucede que duplica codigo al tratar de so
 
 
 @workspace  
-En el modo debug=0, cuando se hace el llamado a Wompi, una vez se selecciona la opciond de regresar al comercio, 
-estamos logrando regresar a la nuestra aplicación pero sin importar la opcion de estado de pago que se selccion en Wompi
-siempre se esta mostrando el hero de "Pago pendiente". Los estados que identico devuelve wompi son: APPROVED, DECLINED,SUCCESS (para simular error).
+
+Al realizar un pago, tras retornar al comercio con un resultado de pago exitoso y encolar una solicitud, se debe disparar una notificacion llamando a notifyTeam que ejecutar un Zap en zapier pero no estan llegando las notificaciones.
 Analiza en busqueda de las causas raices de este error E Identifica que micro cambios pequeños y quirurgicos se deben 
 aplicar y exactamente en que archivos y en que posicion, para lograr coherencia con el estado de wompi y la aplicación.
 Ten en cuenta que antes de presionar el boton de regresar al comercio, esto se registra en Network:

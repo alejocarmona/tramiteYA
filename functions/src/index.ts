@@ -6,6 +6,9 @@ import { onRequest } from "firebase-functions/v2/https";
 import { listServices, getService } from "./services.js";
 import { createOrder, getOrderStatus } from "./orders.js";
 
+export { health } from "./health";
+
+
 // ...existing code...
 
 export const notify = onRequest({ cors: ["https://<tu-sitio>.web.app", "http://localhost:5000"] }, async (req, res) => {

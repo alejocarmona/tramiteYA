@@ -699,6 +699,11 @@ async function createOrder() {
 
     // === Nuevo flujo controlado por el server ===
     if (payInit?.mode === 'wompi' && payInit.checkoutUrl) {
+      // Validar URL antes de redirigir
+      console.log('🔗 [createOrder] URL de checkout generada:', payInit.checkoutUrl);
+      if (!payInit.checkoutUrl.includes('signature')) {
+        throw new Error('URL de pago inválida: firma de integridad faltante. Verifica la configuración en Firebase.');
+      }
       // Flujo real: redirige al Checkout y termina aquí
       location.href = payInit.checkoutUrl;
       return;
@@ -1300,13 +1305,7 @@ else if (IS_DEBUG && S.paySim) S.paySim.classList.add('hidden');
 
   // ...existing code...
 
-  // Oculta iconos del header en móvil para no duplicar
-if (window.matchMedia && window.matchMedia('(max-width: 1023px)').matches) {
-  const headerActions = document.querySelector('.actions');
-  if (headerActions) headerActions.style.display = 'none';
-}
-
-// Bottom nav handlers
+  // Bottom nav handlers
 document.getElementById('bottom-nav')?.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-nav]');
   if (!btn) return;
@@ -1335,32 +1334,30 @@ document.getElementById('about-close')?.addEventListener('click', () => {
   document.getElementById('about-modal')?.close();
 });
 
+  /* =====================
+     Copiar (data-copy)
+  ===================== */
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-copy]');
+    if (!btn) return;
+    const sel = btn.getAttribute('data-copy');
+    const el = document.querySelector(sel);
+    if (!el) return;
 
-});
+    try {
+      await navigator.clipboard.writeText(el.innerText.trim());
+      const oldTitle = btn.title, oldSrc = btn.src;
+      btn.title = 'Copiado ✔';
+      if (btn.tagName === 'IMG') btn.src = 'img/copiar.png';
+      setTimeout(() => { btn.title = oldTitle; if (btn.tagName === 'IMG') btn.src = oldSrc; }, 2000);
+    } catch { btn.title = 'Error'; }
+  });
 
-/* =====================
-   Copiar (data-copy)
-===================== */
-document.addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-copy]');
-  if (!btn) return;
-  const sel = btn.getAttribute('data-copy');
-  const el = document.querySelector(sel);
-  if (!el) return;
+  // Hook de prueba manual
+  window.__confettiTest = function() {
+    const id = 'TEST-'+Date.now();
+    triggerConfetti(id);
+    return id;
+  };
 
-  try {
-    await navigator.clipboard.writeText(el.innerText.trim());
-    const oldTitle = btn.title, oldSrc = btn.src;
-    btn.title = 'Copiado ✔';
-    if (btn.tagName === 'IMG') btn.src = 'img/copiar.png';
-    setTimeout(() => { btn.title = oldTitle; if (btn.tagName === 'IMG') btn.src = oldSrc; }, 2000);
-  } catch { btn.title = 'Error'; }
-});
-
-// Hook de prueba manual
-window.__confettiTest = function() {
-  const id = 'TEST-'+Date.now();
-  triggerConfetti(id);
-  return id;
-};
-
+}); // Cierre de DOMContentLoaded
