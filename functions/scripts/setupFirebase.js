@@ -1,10 +1,18 @@
 // Script unificado de seed: config + servicios
 // Uso: FIRESTORE_EMULATOR_HOST=localhost:8080 node scripts/setupFirebase.js
 
-import { initializeApp, applicationDefault } from 'firebase-admin/app';
+import { initializeApp, applicationDefault, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
-initializeApp({ credential: applicationDefault() });
+// Si hay emulador, no necesita credenciales reales
+const isEmulator = !!process.env.FIRESTORE_EMULATOR_HOST;
+if (!getApps().length) {
+  if (isEmulator) {
+    initializeApp({ projectId: 'apptramiteya' });
+  } else {
+    initializeApp({ credential: applicationDefault() });
+  }
+}
 const db = getFirestore();
 
 async function setup() {

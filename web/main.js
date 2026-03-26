@@ -345,6 +345,7 @@ function show(el) {
   hideBanner();
   [S.list, S.form, S.status].forEach(x => x.classList.add('hidden'));
   el.classList.remove('hidden');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function pesos(n) {
   return new Intl.NumberFormat('es-CO', {
@@ -786,6 +787,7 @@ async function createOrder() {
       delivery: { channel: null, fileUrl: null }
     });
 
+    setBtnLoading(S.btnCreate, true, "Procesando pago…");
     console.log('[createOrder] POST /payments_init…');
     const payInit = await api('payments_init', {
       method:'POST',
@@ -821,32 +823,24 @@ async function createOrder() {
 
 // ...existing code...
 if (payInit?.mode === 'mock') {
-  if (IS_DEBUG) {
-    // Debug: mostrar simulador y permanecer en el formulario
-    if (S.paySim) {
-      S.paySim.classList.remove('hidden');
-      S.paySim.style.display = 'block';
-      const det = document.getElementById('simulator');
-      if (det) det.open = true;
-    }
-    // Liberar UI (que el usuario pueda cancelar o cerrar)
-    disableFormInputs(false);
-    lockHeader(false);
-    lockNavigation(false);
-    setBtnLoading(S.btnCreate, false, "Creando…", "Crear orden");
-    // IMPORTANTE: NO navegar a pantalla de estado aquí
-    return;
-  } else {
-    // Producción (sin debug): auto-aprobación rápida (success por defecto)
-    try {
-      await api('payments_confirm', {
-        method:'POST',
-        body: JSON.stringify({ orderId: order.id, scenario: 'success' })
-      });
-    } catch (e) {
-      console.warn('[mock auto-approve] opcional:', e);
-    }
+  // Mostrar simulador de pago en modo mock
+  if (S.paySim) {
+    S.paySim.classList.remove('hidden');
+    S.paySim.style.display = 'block';
+    const det = document.getElementById('simulator');
+    if (det) det.open = true;
+    // Scroll para que el usuario vea el simulador
+    setTimeout(() => S.paySim.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
   }
+  // Solo alertar si la config realmente falta (no si mock es intencional)
+  if (payInit.reason === 'config_missing') {
+    showBanner('Configuración de pagos no encontrada. Contacta al administrador.', 'error');
+  }
+  disableFormInputs(false);
+  lockHeader(false);
+  lockNavigation(false);
+  setBtnLoading(S.btnCreate, false, "Creando…", "Crear orden");
+  return;
 }
 // ...existing code...
 
@@ -1401,10 +1395,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadServices();
   if (typeof loadCatalog === 'function') loadCatalog();
 
-// ...existing code...
-// Mostrar/ocultar simulador según debug
-if (!IS_DEBUG && S.paySim) S.paySim.remove();
-else if (IS_DEBUG && S.paySim) S.paySim.classList.add('hidden');
+// Simulador de pago: siempre oculto al inicio, se muestra dinámicamente en modo mock
+if (S.paySim) S.paySim.classList.add('hidden');
 // ...existing code...
   const f = document.getElementById('form');
   if (f) {

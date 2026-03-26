@@ -660,7 +660,7 @@ dialog#about-modal .muted { color: #64748b; font-size: 12px; }
           <label for="contact_email">Correo *</label>
           <input name="contact_email" id="contact_email" type="email" autocomplete="email" required>
           <label for="contact_phone">Celular *</label>
-          <input name="contact_phone" id="contact_phone" type="tel" inputmode="tel" pattern="^[0-9 +()-]{7,}$" required>
+          <input name="contact_phone" id="contact_phone" type="tel" inputmode="tel" pattern="[0-9 +()\-]{7,}" required>
         </div>
       </div>
 
@@ -862,7 +862,7 @@ dialog#about-modal .muted { color: #64748b; font-size: 12px; }
 
 </main>
 
-<script defer src="./main.js?v=18"></script>
+<script defer src="./main.js?v=20"></script>
 <script>
   // Registrar Service Worker
   if ('serviceWorker' in navigator) {

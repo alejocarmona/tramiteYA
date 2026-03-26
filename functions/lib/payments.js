@@ -103,12 +103,19 @@ exports.payments_init = (0, https_1.onRequest)(async (req, res) => {
             const config = await readPaymentsConfig(db);
             const { env, wompi } = getActiveEnv(config);
             console.log("[payments_init] activeEnv =", env);
-            // Mock: retorna inmediatamente
-            if (env === "mock" || !wompi) {
-                const reason = !config ? "config_missing" : !wompi ? "wompi_config_missing" : undefined;
-                if (reason)
-                    console.warn("[payments_init]", reason, "→ usando mock");
-                return ok(res, { mode: "mock", status: "pending", ...(reason ? { reason } : {}) });
+            // Sin config → mock con razón
+            if (!config) {
+                console.warn("[payments_init] config/payments no existe → mock");
+                return ok(res, { mode: "mock", status: "pending", reason: "config_missing" });
+            }
+            // Mock intencional → sin reason (no es error)
+            if (env === "mock") {
+                return ok(res, { mode: "mock", status: "pending" });
+            }
+            // Config incompleta para Wompi
+            if (!wompi) {
+                console.warn("[payments_init] ambiente", env, "sin config Wompi → mock");
+                return ok(res, { mode: "mock", status: "pending", reason: "wompi_config_missing" });
             }
             // Validar config mínima de Wompi
             if (!wompi.publicKey || !wompi.integritySecret || !wompi.returnUrl) {
