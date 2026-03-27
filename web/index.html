@@ -487,19 +487,19 @@ header .brand__subtitle{ font-size:12px; line-height:1.2; margin-top:2px; }
 <style>
 /* ==== STATUS HERO (no romper estilos actuales) ==== */
 .status-hero{
-  display:flex; align-items:flex-start; gap:12px;
-  background:#E6F9ED; color:#14532d; /* success por defecto */
+  display:flex; flex-direction:column; gap:6px;
+  background:#E6F9ED; color:#14532d;
   border:1px solid rgba(0,0,0,.06);
   border-radius: var(--radius);
   padding:14px 16px;
   box-shadow: var(--shadow);
   margin-bottom: 12px;
 }
-.status-hero__icon{ font-size:22px; line-height:1; margin-top:2px; }
-.status-hero__content{ flex:1 1 auto; }
-.status-hero__title{ margin:0 0 4px; font-size:18px; font-weight:800; }
-.status-hero__subtitle{ margin:0; font-size:14px; opacity:.9; }
-.status-hero__time{ white-space:nowrap; font-size:13px; color:#334155; opacity:.8; }
+.status-hero__row{ display:flex; align-items:center; gap:8px; }
+.status-hero__icon{ font-size:20px; line-height:1; flex-shrink:0; }
+.status-hero__title{ margin:0; font-size:17px; font-weight:800; flex:1; }
+.status-hero__time{ white-space:nowrap; font-size:12px; opacity:.8; flex-shrink:0; }
+.status-hero__subtitle{ margin:0; font-size:13px; opacity:.85; line-height:1.4; }
 
 /* Modificadores de estado (colores suaves, sin afectar otros componentes) */
 .status-hero.is-success{ background:#E6F9ED; color:#166534; }
@@ -744,14 +744,12 @@ dialog#about-modal .muted { color: #64748b; font-size: 12px; }
 <!-- ...existing code... -->
     <!-- HERO DE ESTADO (nuevo) -->
     <section id="status-hero" class="status-hero is-pending">
-      <div class="status-hero__icon" id="hero-ico" aria-hidden="true">⏳</div>
-      <div class="status-hero__content">
+      <div class="status-hero__row">
+        <div class="status-hero__icon" id="hero-ico" aria-hidden="true">⏳</div>
         <h2 class="status-hero__title" id="hero-title">Pago pendiente</h2>
-        <p class="status-hero__subtitle" id="hero-sub">
-          Estamos procesando el estado de tu pago…
-        </p>
+        <div class="status-hero__time" id="hero-date">—</div>
       </div>
-      <div class="status-hero__time" id="hero-date">—</div>
+      <p class="status-hero__subtitle" id="hero-sub">Estamos procesando el estado de tu pago…</p>
     </section>
 <!-- ...existing code... -->
 

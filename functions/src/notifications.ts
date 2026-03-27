@@ -62,7 +62,7 @@ export const onOrderPaymentPaid = onDocumentUpdated("orders/{orderId}", async (e
         <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;color:#64748b;">Total</td>
             <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-weight:700;color:#16a34a;">${fmtCOP(price.total)}</td></tr>
       </table>
-      <p style="color:#64748b;font-size:0.85rem;">Sube el certificado desde /admin.html</p>
+      <p style="font-size:0.85rem;"><a href="https://apptramiteya.web.app/admin.html" style="color:#2563eb;text-decoration:underline;">Subir certificado desde Admin</a></p>
     </div>
   `;
 

@@ -62,6 +62,16 @@ if (IS_CAPACITOR) {
         }
       }
     });
+    // Back button hardware (complementa el handler nativo en MainActivity.java)
+    CapApp.addListener('backButton', () => {
+      const onList = S.list && !S.list.classList.contains('hidden');
+      if (onList) {
+        CapApp.minimizeApp();
+      } else {
+        cleanOrderUrl();
+        show(S.list);
+      }
+    });
   }
   console.info('[Capacitor] Modo nativo activo');
 }
@@ -465,15 +475,26 @@ function hideBanner() {
 ===================== */
 const LS_KEY = 'tya_orders';
 
+// Array en memoria como fuente única de verdad — evita race conditions en localStorage
+let _historyCache = null;
+
 function loadHistory() {
-  try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); }
-  catch { return []; }
+  if (_historyCache) return _historyCache;
+  try { _historyCache = JSON.parse(localStorage.getItem(LS_KEY) || '[]'); }
+  catch { _historyCache = []; }
+  return _historyCache;
 }
 function saveHistory(arr) {
-  localStorage.setItem(LS_KEY, JSON.stringify(arr.slice(0, 50)));
+  _historyCache = arr.slice(0, 50);
+  try { localStorage.setItem(LS_KEY, JSON.stringify(_historyCache)); } catch {}
 }
 function addHistory(entry) {
   const arr = loadHistory();
+  // Evitar duplicados
+  if (entry.id && arr.some(x => x.id === entry.id)) {
+    updateHistoryStatus(entry.id, entry);
+    return;
+  }
   arr.unshift(entry);
   saveHistory(arr);
   renderHistory();
@@ -481,7 +502,11 @@ function addHistory(entry) {
 function updateHistoryStatus(id, changes) {
   const arr = loadHistory();
   const i = arr.findIndex(x => x.id === id);
-  if (i >= 0) arr[i] = { ...arr[i], ...changes };
+  if (i >= 0) {
+    arr[i] = { ...arr[i], ...changes };
+  } else if (id && changes) {
+    arr.unshift({ id, ...changes, createdAt: new Date().toISOString() });
+  }
   saveHistory(arr);
   renderHistory();
 }
@@ -832,29 +857,41 @@ async function createOrder() {
     });
     console.log('[createOrder] /payments_init OK', payInit);
 
-    // === Nuevo flujo controlado por el server ===
+    // === Wompi checkout ===
     if (payInit?.mode === 'wompi' && payInit.checkoutUrl) {
-      // Validar URL antes de redirigir
-      console.log('🔗 [createOrder] URL de checkout generada:', payInit.checkoutUrl);
-      if (!payInit.checkoutUrl.includes('signature')) {
-        throw new Error('URL de pago inválida: firma de integridad faltante. Verifica la configuración en Firebase.');
-      }
-      // Capacitor: abrir en navegador externo del sistema (necesario para Wompi)
+      console.log('[createOrder] Checkout URL:', payInit.checkoutUrl);
+
+      // Capacitor: abrir en browser in-app (Custom Tab)
       if (IS_CAPACITOR && CapBrowser) {
-        console.log('[Capacitor] Abriendo Wompi en Browser externo');
+        console.log('[Capacitor] Abriendo Wompi en Browser');
+        // Al cerrar el browser, verificar estado del pago
+        const closeListener = await CapBrowser.addListener('browserFinished', async () => {
+          closeListener?.remove();
+          console.log('[Capacitor] Browser cerrado, verificando pago...');
+          try {
+            const status = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
+            renderStatus(status);
+            updateHistoryStatus(currentOrder.id, { status: status.status, payment: status.payment, delivery: status.delivery ?? null });
+            maybeNotifyPaid(status);
+            if (normalizePayment(status.payment) === 'paid' && normalizeOrderStatus(status.status) !== 'delivered') {
+              pollForDelivery(currentOrder.id);
+            }
+          } catch (e) { console.warn('[Capacitor] Error verificando pago:', e); }
+        });
+
         await CapBrowser.open({ url: payInit.checkoutUrl });
-        // No hacemos return — el pago se confirma cuando la app vuelve al frente
-        // via appStateChange listener configurado arriba
         disableFormInputs(false); lockHeader(false); lockNavigation(false);
         setBtnLoading(S.btnCreate, false, "", "Crear orden");
-        showBanner('Tu pago se abrió en el navegador. Vuelve aquí cuando termines.', 'info', true);
         show(S.status);
-        const status = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
-        renderStatus(status);
+        try {
+          const status = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
+          renderStatus(status);
+        } catch {}
         return;
       }
-      // Flujo web: redirige al Checkout y termina aquí
-      location.href = payInit.checkoutUrl;
+
+      // Web: redirect (replace para no dejar Wompi en historial)
+      location.replace(payInit.checkoutUrl);
       return;
     }
 
@@ -1436,7 +1473,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Init principal
   try { await loadConfig(); setFabWhatsApp(null); } catch { setFabWhatsApp(null); }
+  _historyCache = null; // forzar lectura fresca de localStorage
   renderHistory();
+  // Re-render tras delays: Android auto-backup puede restaurar localStorage con retraso
+  setTimeout(() => { _historyCache = null; renderHistory(); }, 800);
+  setTimeout(() => { _historyCache = null; renderHistory(); }, 2500);
   loadServices();
   if (typeof loadCatalog === 'function') loadCatalog();
 

@@ -54,7 +54,7 @@ if (document.querySelector('#app') || document.querySelector('[data-app]')) {
     if (txId)      q.set('id', txId);
     if (reference) q.set('reference', reference);
     if (debug)     q.set('debug', '1');
-    location.href = `/?${q.toString()}`;
+    location.replace(`/?${q.toString()}`);
   }
   
   async function fetchJSON(url, opts = {}, retries = 2) {
