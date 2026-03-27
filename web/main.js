@@ -249,7 +249,8 @@ function setFabWhatsApp(orderOrNull) {
 // ...existing code...
 function functionUrl(name) {
   const qp  = new URLSearchParams(location.search);
-  const ENV = qp.get('env');
+  const rawEnv = qp.get('env');
+  const ENV = (rawEnv && rawEnv !== 'undefined' && rawEnv !== 'null') ? rawEnv : null;
 
   // Helper: normaliza base (quita / finales y elimina /us-central1 cuando no es emulador)
   const normalizeBase = (base, isEmu) => {
@@ -272,10 +273,15 @@ function functionUrl(name) {
     return `${base}/${name}`;
   }
 
-  // Same-origin en Hosting
+  // Same-origin en Hosting (incluye túneles de dev como cloudflared/ngrok)
+  // HTTPS siempre indica túnel o producción → usar rewrites del hosting
   const isHosting = (location.port === '5000') ||
+    location.protocol === 'https:' ||
     location.hostname.endsWith('.web.app') ||
-    location.hostname.endsWith('.firebaseapp.com');
+    location.hostname.endsWith('.firebaseapp.com') ||
+    location.hostname.endsWith('.trycloudflare.com') ||
+    location.hostname.endsWith('.ngrok-free.dev') ||
+    location.hostname.endsWith('.ngrok-free.app');
   if (!ENV && isHosting) {
     console.info('API base: (hosting rewrite)');
     return `/${name}`;

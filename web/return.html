@@ -18,9 +18,22 @@
 
 
 
-<!-- ...existing code... -->
+<script>
+// Si un SW sirvió index.html en vez de return.html, forzar recarga limpia
+if (document.querySelector('#app') || document.querySelector('[data-app]')) {
+  navigator.serviceWorker.getRegistrations().then(r => r.forEach(sw => sw.unregister()));
+  location.reload();
+  throw new Error('SW override detected, reloading');
+}
+</script>
 <script>
 (async () => {
+  // Desregistrar SW para que no interfiera con esta página
+  if (navigator.serviceWorker) {
+    const regs = await navigator.serviceWorker.getRegistrations().catch(() => []);
+    for (const r of regs) await r.unregister().catch(() => {});
+  }
+
   const params    = new URLSearchParams(location.search);
   const scenario  = params.get('scenario');              // mock
   const orderIdQS = params.get('orderId');               // mock

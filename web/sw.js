@@ -30,9 +30,11 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
 
-  // API calls y pagos: siempre a la red
+  // API calls, pagos y páginas de retorno: siempre a la red (sin cache)
   if (['services', 'orders', 'payments_init', 'payments_confirm', 'notify', 'config_public', 'health']
-      .some(ep => url.pathname.includes(ep))) {
+      .some(ep => url.pathname.includes(ep))
+      || url.pathname.includes('return.html')
+      || url.pathname.includes('mockpay.html')) {
     return;
   }
 

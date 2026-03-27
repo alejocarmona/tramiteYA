@@ -129,7 +129,12 @@ export const payments_init = onRequest(async (req, res) => {
       const reference = `${orderId}-${suffix}`.slice(0, 64);
 
       // Return URL con reference
-      let returnUrl = wompi.returnUrl;
+      // PUBLIC_BASE_URL permite usar un túnel (ngrok, cloudflare) en dev local
+      // para evitar que Wompi rechace localhost en redirect-url (403 CloudFront).
+      const publicBase = process.env.PUBLIC_BASE_URL;
+      let returnUrl = publicBase
+        ? `${publicBase.replace(/\/+$/, "")}/return.html`
+        : wompi.returnUrl;
       if (!/return\.html$/i.test(returnUrl)) {
         if (!returnUrl.endsWith("/")) returnUrl += "/";
         returnUrl += "return.html";
@@ -156,18 +161,13 @@ export const payments_init = onRequest(async (req, res) => {
       // Firma de integridad
       const raw = `${reference}${amountInCents}${currency}${wompi.integritySecret}`;
       const signature = crypto.createHash("sha256").update(raw).digest("hex");
-      qs.set("signature:integrity", signature);
 
       console.log("[payments_init] firma generada para ref:", reference, "amount:", amountInCents);
 
       const checkoutUrlBase = wompi.checkoutUrlBase || "https://checkout.wompi.co/p/";
-      const checkoutUrl = `${checkoutUrlBase}?${qs.toString()}`;
-
-      // Validar que la firma está en la URL
-      if (!checkoutUrl.includes("signature%3Aintegrity") && !checkoutUrl.includes("signature:integrity")) {
-        console.error("[payments_init] firma NO presente en URL");
-        return bad(res, "Error generando URL de pago. Contacta soporte.", 500);
-      }
+      // IMPORTANTE: Wompi requiere "signature:integrity" literal (no %3A).
+      // URLSearchParams codifica ":" como "%3A", así que lo agregamos manualmente.
+      const checkoutUrl = `${checkoutUrlBase}?${qs.toString()}&signature:integrity=${signature}`;
 
       return ok(res, { mode: "wompi", checkoutUrl, reference, orderId });
 

@@ -27,33 +27,38 @@ async function setup() {
     }, { merge: true });
     console.log('   ✅ Listo\n');
 
-    // ─── 2. config/payments (TODO lo de pagos, un solo lugar) ───
+    // ─── 2. config/payments (solo si NO existe, para no sobreescribir claves reales) ───
     console.log('📝 config/payments...');
-    await db.collection('config').doc('payments').set({
-        activeEnv: "mock",   // ← CAMBIAR ESTO para alternar: "mock", "test", "prod"
-        environments: {
-            mock: {},
-            test: {
-                publicKey: "pub_test_REEMPLAZA",
-                secretKey: "prv_test_REEMPLAZA",
-                integritySecret: "test_integrity_REEMPLAZA",
-                eventsSecret: "",
-                apiUrl: "https://api-sandbox.wompi.co",
-                checkoutUrlBase: "https://checkout.wompi.co/p/",
-                returnUrl: "http://localhost:5000/return.html"
-            },
-            prod: {
-                publicKey: "pub_prod_REEMPLAZA",
-                secretKey: "prv_prod_REEMPLAZA",
-                integritySecret: "prod_integrity_REEMPLAZA",
-                eventsSecret: "",
-                apiUrl: "https://api.wompi.co",
-                checkoutUrlBase: "https://checkout.wompi.co/p/",
-                returnUrl: "https://apptramiteya.web.app/return.html"
+    const paymentsSnap = await db.collection('config').doc('payments').get();
+    if (paymentsSnap.exists) {
+        console.log('   ⏭️  Ya existe — no se sobreescribe (tus claves están seguras)\n');
+    } else {
+        await db.collection('config').doc('payments').set({
+            activeEnv: "mock",
+            environments: {
+                mock: {},
+                test: {
+                    publicKey: "pub_test_REEMPLAZA",
+                    secretKey: "prv_test_REEMPLAZA",
+                    integritySecret: "test_integrity_REEMPLAZA",
+                    eventsSecret: "",
+                    apiUrl: "https://sandbox.wompi.co",
+                    checkoutUrlBase: "https://checkout.wompi.co/p/",
+                    returnUrl: "http://localhost:5000/return.html"
+                },
+                prod: {
+                    publicKey: "pub_prod_REEMPLAZA",
+                    secretKey: "prv_prod_REEMPLAZA",
+                    integritySecret: "prod_integrity_REEMPLAZA",
+                    eventsSecret: "",
+                    apiUrl: "https://api.wompi.co",
+                    checkoutUrlBase: "https://checkout.wompi.co/p/",
+                    returnUrl: "https://apptramiteya.web.app/return.html"
+                }
             }
-        }
-    }, { merge: true });
-    console.log('   ✅ Listo (activeEnv: "mock")\n');
+        });
+        console.log('   ✅ Creado con placeholders (activeEnv: "mock")\n');
+    }
 
     // ─── 3. Catálogo de servicios ───
     console.log('📝 Servicios...');
@@ -154,6 +159,11 @@ async function setup() {
     console.log('  💳 Agregar claves Wompi:');
     console.log('     Firestore > config > payments > environments > test (o prod)');
     console.log('     Obtén tus claves en: https://comercios.wompi.co/\n');
+    console.log('  🌐 Usar modo test en local (túnel público):');
+    console.log('     Wompi rechaza localhost en redirect-url (403 CloudFront).');
+    console.log('     1. Inicia un túnel:  ngrok http 5000');
+    console.log('     2. Exporta la URL:   export PUBLIC_BASE_URL=https://xxxx.ngrok-free.app');
+    console.log('     3. Reinicia el emulador de Functions.\n');
     console.log('  📦 Editar servicios y precios:');
     console.log('     Firestore > services > [nombre del servicio]');
     console.log('     enabled: true/false para mostrar/ocultar\n');
