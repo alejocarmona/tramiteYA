@@ -133,6 +133,14 @@ function maybeNotifyPaid(order) {
   }
 }
 
+// Limpia los query params de orden de la URL (para que refresh no vuelva al comprobante)
+function cleanOrderUrl() {
+  const q = new URLSearchParams(location.search);
+  q.delete('orderId'); q.delete('id'); q.delete('reference'); q.delete('ref'); q.delete('env');
+  const clean = q.toString();
+  history.replaceState({}, document.title, `${location.pathname}${clean ? `?${clean}` : ''}${location.hash || ''}`);
+}
+
 // Polling: revisa periódicamente si la orden fue entregada (certificado listo)
 let _pollTimer = null;
 function pollForDelivery(orderId) {
@@ -1352,6 +1360,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         show(S.status);
 
+        // Limpiar URL para que refresh no vuelva al comprobante
+        cleanOrderUrl();
+
         // Reconfirmación + polling si sigue pendiente (Wompi)
         const isWompi = st?.payment?.mode === 'wompi' || st?.paymentMode === 'wompi';
         const isPending = (normalizePayment(st.payment) === 'pending');
@@ -1409,8 +1420,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       renderHistory();
     });
   }
-  if (S.btnBack)  S.btnBack.addEventListener('click', () => show(S.list));
-  if (S.btnRetry) S.btnRetry.addEventListener('click', () => { show(S.list); loadServices(); });
+  if (S.btnBack)  S.btnBack.addEventListener('click', () => { cleanOrderUrl(); show(S.list); });
+  if (S.btnRetry) S.btnRetry.addEventListener('click', () => { cleanOrderUrl(); show(S.list); loadServices(); });
   if (S.btnCreate) {
     S.btnCreate.addEventListener('click', (e) => { e.preventDefault(); createOrder().catch(err => alert(err.message)); });
   }

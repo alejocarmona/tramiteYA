@@ -12,7 +12,7 @@ export { onOrderPaymentPaid } from "./notifications.js";
 
 // ...existing code...
 
-export const notify = onRequest({ cors: ["https://<tu-sitio>.web.app", "http://localhost:5000"] }, async (req, res) => {
+export const notify = onRequest({ cors: ["https://apptramiteya.web.app", "http://localhost:5000"] }, async (req, res) => {
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }     // ← no retornes Response
   if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
 

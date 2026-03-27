@@ -15,7 +15,7 @@ Object.defineProperty(exports, "health", { enumerable: true, get: function () { 
 var notifications_js_1 = require("./notifications.js");
 Object.defineProperty(exports, "onOrderPaymentPaid", { enumerable: true, get: function () { return notifications_js_1.onOrderPaymentPaid; } });
 // ...existing code...
-exports.notify = (0, https_1.onRequest)({ cors: ["https://<tu-sitio>.web.app", "http://localhost:5000"] }, async (req, res) => {
+exports.notify = (0, https_1.onRequest)({ cors: ["https://apptramiteya.web.app", "http://localhost:5000"] }, async (req, res) => {
     if (req.method === 'OPTIONS') {
         res.status(204).end();
         return;
