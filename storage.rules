@@ -1,0 +1,9 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /certificates/{allPaths=**} {
+      allow read: if true;    // descarga pública
+      allow write: if false;  // solo via Admin SDK (backend)
+    }
+  }
+}

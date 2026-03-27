@@ -1,5 +1,8 @@
 {
   "functions": { "source": "functions" },
+  "storage": {
+    "rules": "storage.rules"
+  },
   "hosting": {
     "public": "web",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
@@ -7,6 +10,7 @@
       { "source": "/notify", "function": { "region": "us-central1", "functionId": "notify" } },
       { "source": "/payments_init",    "function": "payments_init" },
       { "source": "/payments_confirm", "function": "payments_confirm" },
+      { "source": "/admin_upload",     "function": "admin_upload" },
       { "source": "/services",         "function": "services" },
       { "source": "/orders",           "function": "orders" }
     ]
@@ -18,8 +22,9 @@
   "emulators": {
     "functions": { "port": 5001 },
     "firestore": { "port": 8080 },
-    "hosting": { "port": 5000 },
-    "ui": { "enabled": true },
+    "storage":   { "port": 9199 },
+    "hosting":   { "port": 5000 },
+    "ui":        { "enabled": true },
     "import": "./emulator-data",
     "exportOnExit": "./emulator-data"
   }

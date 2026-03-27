@@ -27,6 +27,21 @@ async function setup() {
     }, { merge: true });
     console.log('   ✅ Listo\n');
 
+    // ─── 1b. config/admin (solo si NO existe) ───
+    console.log('📝 config/admin...');
+    const adminSnap = await db.collection('config').doc('admin').get();
+    if (adminSnap.exists) {
+        console.log('   ⏭️  Ya existe — no se sobreescribe\n');
+    } else {
+        await db.collection('config').doc('admin').set({
+            uploadSecret: "CAMBIA_ESTE_SECRET_" + Math.random().toString(36).slice(2, 10),
+            notifyEmail: "tu-email@gmail.com",
+            gmailUser: "tu-email@gmail.com",
+            gmailAppPassword: "REEMPLAZA_CON_APP_PASSWORD"
+        });
+        console.log('   ✅ Creado con placeholders (configura email y uploadSecret en Firestore)\n');
+    }
+
     // ─── 2. config/payments (solo si NO existe, para no sobreescribir claves reales) ───
     console.log('📝 config/payments...');
     const paymentsSnap = await db.collection('config').doc('payments').get();

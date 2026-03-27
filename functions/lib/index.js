@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.orders = exports.services = exports.config_public = exports.payments_confirm = exports.payments_init = exports.notify = exports.health = void 0;
+exports.orders = exports.services = exports.admin_upload = exports.config_public = exports.payments_confirm = exports.payments_init = exports.notify = exports.onOrderPaymentPaid = exports.health = void 0;
 // functions/src/index.ts
 const cors_1 = __importDefault(require("cors"));
 const https_1 = require("firebase-functions/v2/https");
@@ -12,6 +12,8 @@ const services_js_1 = require("./services.js");
 const orders_js_1 = require("./orders.js");
 var health_1 = require("./health");
 Object.defineProperty(exports, "health", { enumerable: true, get: function () { return health_1.health; } });
+var notifications_js_1 = require("./notifications.js");
+Object.defineProperty(exports, "onOrderPaymentPaid", { enumerable: true, get: function () { return notifications_js_1.onOrderPaymentPaid; } });
 // ...existing code...
 exports.notify = (0, https_1.onRequest)({ cors: ["https://<tu-sitio>.web.app", "http://localhost:5000"] }, async (req, res) => {
     if (req.method === 'OPTIONS') {
@@ -46,6 +48,8 @@ Object.defineProperty(exports, "payments_init", { enumerable: true, get: functio
 Object.defineProperty(exports, "payments_confirm", { enumerable: true, get: function () { return payments_js_1.payments_confirm; } });
 var config_js_1 = require("./config.js");
 Object.defineProperty(exports, "config_public", { enumerable: true, get: function () { return config_js_1.config_public; } });
+var admin_js_1 = require("./admin.js");
+Object.defineProperty(exports, "admin_upload", { enumerable: true, get: function () { return admin_js_1.admin_upload; } });
 const cors = (0, cors_1.default)({ origin: true });
 // ----- Services -----
 // GET /services          -> lista

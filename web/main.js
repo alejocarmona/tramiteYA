@@ -132,6 +132,29 @@ function maybeNotifyPaid(order) {
     console.warn('[maybeNotifyPaid]', e);
   }
 }
+
+// Polling: revisa periódicamente si la orden fue entregada (certificado listo)
+let _pollTimer = null;
+function pollForDelivery(orderId) {
+  if (_pollTimer) clearInterval(_pollTimer);
+  let attempts = 0;
+  const MAX = 10; // 10 × 30s = 5 min
+  _pollTimer = setInterval(async () => {
+    attempts++;
+    try {
+      const st = await api(`orders?id=${encodeURIComponent(orderId)}`, { ignore404: true, silent: true });
+      if (!st) { clearInterval(_pollTimer); return; }
+      renderStatus(st);
+      updateHistoryStatus(orderId, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
+      if (normalizeOrderStatus(st.status) === 'delivered' || attempts >= MAX) {
+        clearInterval(_pollTimer);
+        _pollTimer = null;
+      }
+    } catch {
+      if (attempts >= MAX) { clearInterval(_pollTimer); _pollTimer = null; }
+    }
+  }, 30000);
+}
 // ...existing code...
 
 
@@ -1321,6 +1344,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateHistoryStatus(orderIdFromQS, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
         // ===========================================
                 maybeNotifyPaid(st);
+
+        // Polling automático si pagó pero aún no entregado
+        if (normalizePayment(st.payment) === 'paid' && normalizeOrderStatus(st.status) !== 'delivered') {
+          pollForDelivery(orderIdFromQS);
+        }
 
         show(S.status);
 

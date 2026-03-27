@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>TramiteYA - Admin</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0f172a;color:#e2e8f0;padding:24px}
+    .container{max-width:540px;margin:0 auto}
+    h1{font-size:1.4rem;margin-bottom:4px}
+    .sub{color:#94a3b8;font-size:0.85rem;margin-bottom:24px}
+    label{display:block;font-weight:600;margin:16px 0 6px;font-size:0.9rem}
+    input,select{width:100%;padding:10px 12px;border:1px solid #334155;border-radius:8px;background:#1e293b;color:#e2e8f0;font-size:0.95rem}
+    input:focus{outline:none;border-color:#3b82f6}
+    input[type="file"]{padding:8px;cursor:pointer}
+    .btn{display:inline-block;padding:12px 24px;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;width:100%;margin-top:20px;transition:background .2s}
+    .btn-primary{background:#2563eb;color:#fff}
+    .btn-primary:hover{background:#1d4ed8}
+    .btn-primary:disabled{background:#475569;cursor:not-allowed}
+    .result{margin-top:20px;padding:14px;border-radius:8px;font-size:0.9rem;word-break:break-all}
+    .result.ok{background:#064e3b;color:#6ee7b7;border:1px solid #065f46}
+    .result.err{background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d}
+    .result.info{background:#1e293b;color:#93c5fd;border:1px solid #1e40af}
+    .hidden{display:none}
+    .secret-row{display:flex;gap:8px;align-items:center}
+    .secret-row input{flex:1}
+    .btn-sm{padding:8px 14px;border:none;border-radius:6px;font-size:0.8rem;cursor:pointer;background:#334155;color:#e2e8f0;white-space:nowrap}
+    .btn-sm:hover{background:#475569}
+    .file-info{margin-top:8px;color:#94a3b8;font-size:0.85rem}
+    .divider{border-top:1px solid #334155;margin:24px 0}
+    details{margin-top:16px}
+    summary{cursor:pointer;color:#94a3b8;font-size:0.85rem}
+    .help{color:#94a3b8;font-size:0.8rem;margin-top:4px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>TramiteYA Admin</h1>
+    <p class="sub">Subir certificados a ordenes completadas</p>
+
+    <label for="secret">Secret de admin</label>
+    <div class="secret-row">
+      <input type="password" id="secret" placeholder="Tu uploadSecret de config/admin"/>
+      <button class="btn-sm" id="toggle-secret">Mostrar</button>
+      <button class="btn-sm" id="save-secret">Guardar</button>
+    </div>
+    <p class="help">Se guarda en este navegador. Lo encuentras en Firestore: config &gt; admin &gt; uploadSecret</p>
+
+    <div class="divider"></div>
+
+    <label for="orderId">ID de la orden</label>
+    <input type="text" id="orderId" placeholder="Ej: j4lLL2USdlDWBHXWsTaG"/>
+
+    <label for="file">Certificado (PDF u otro archivo)</label>
+    <input type="file" id="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"/>
+    <div id="file-info" class="file-info"></div>
+
+    <button class="btn btn-primary" id="btn-upload" disabled>Subir certificado</button>
+
+    <div id="result" class="result hidden"></div>
+
+    <details>
+      <summary>Ordenes pendientes de entrega</summary>
+      <div id="pending-list" style="margin-top:12px;font-size:0.85rem;color:#94a3b8;">
+        Cargando...
+      </div>
+    </details>
+  </div>
+
+<script>
+const LS_KEY = 'tya_admin_secret';
+const $secret = document.getElementById('secret');
+const $orderId = document.getElementById('orderId');
+const $file = document.getElementById('file');
+const $fileInfo = document.getElementById('file-info');
+const $btn = document.getElementById('btn-upload');
+const $result = document.getElementById('result');
+const $pendingList = document.getElementById('pending-list');
+
+// --- Secret management ---
+$secret.value = localStorage.getItem(LS_KEY) || '';
+
+document.getElementById('save-secret').onclick = () => {
+  localStorage.setItem(LS_KEY, $secret.value.trim());
+  showResult('Secret guardado en este navegador.', 'info');
+};
+
+document.getElementById('toggle-secret').onclick = (e) => {
+  const isPass = $secret.type === 'password';
+  $secret.type = isPass ? 'text' : 'password';
+  e.target.textContent = isPass ? 'Ocultar' : 'Mostrar';
+};
+
+// --- File selection ---
+let fileBase64 = null;
+let fileName = null;
+let contentType = null;
+
+$file.onchange = () => {
+  const f = $file.files[0];
+  if (!f) { fileBase64 = null; updateBtn(); return; }
+  fileName = f.name;
+  contentType = f.type || 'application/pdf';
+  $fileInfo.textContent = `${f.name} (${(f.size / 1024).toFixed(1)} KB)`;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    fileBase64 = reader.result.split(',')[1]; // quitar "data:...;base64,"
+    updateBtn();
+  };
+  reader.readAsDataURL(f);
+};
+
+$orderId.oninput = updateBtn;
+$secret.oninput = updateBtn;
+
+function updateBtn() {
+  $btn.disabled = !($secret.value.trim() && $orderId.value.trim() && fileBase64);
+}
+
+// --- Upload ---
+$btn.onclick = async () => {
+  $btn.disabled = true;
+  $btn.textContent = 'Subiendo...';
+  $result.className = 'result hidden';
+
+  try {
+    const resp = await fetch('/admin_upload', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${$secret.value.trim()}`
+      },
+      body: JSON.stringify({
+        orderId: $orderId.value.trim(),
+        fileBase64,
+        fileName,
+        contentType
+      })
+    });
+
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      showResult(`Error ${resp.status}: ${data.error || 'Error desconocido'}`, 'err');
+      return;
+    }
+
+    showResult(
+      `Certificado subido exitosamente.\n` +
+      `Orden: ${data.orderId}\n` +
+      `URL: ${data.fileUrl}`,
+      'ok'
+    );
+
+    // Limpiar form
+    $orderId.value = '';
+    $file.value = '';
+    $fileInfo.textContent = '';
+    fileBase64 = null;
+    updateBtn();
+
+    // Refresh pending list
+    loadPendingOrders();
+
+  } catch (e) {
+    showResult(`Error de red: ${e.message}`, 'err');
+  } finally {
+    $btn.textContent = 'Subir certificado';
+    updateBtn();
+  }
+};
+
+function showResult(text, type) {
+  $result.textContent = text;
+  $result.className = `result ${type}`;
+}
+
+// --- Pending orders ---
+async function loadPendingOrders() {
+  try {
+    // Usar el secret para autenticar una consulta simple
+    // Por ahora, consultamos ordenes desde el endpoint público (solo ids, sin datos sensibles)
+    $pendingList.textContent = 'Esta sección estará disponible próximamente.';
+  } catch {
+    $pendingList.textContent = 'Error cargando ordenes.';
+  }
+}
+loadPendingOrders();
+
+// Init
+updateBtn();
+</script>
+</body>
+</html>

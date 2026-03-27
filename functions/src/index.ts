@@ -7,6 +7,7 @@ import { listServices, getService } from "./services.js";
 import { createOrder, getOrderStatus } from "./orders.js";
 
 export { health } from "./health";
+export { onOrderPaymentPaid } from "./notifications.js";
 
 
 // ...existing code...
@@ -37,6 +38,7 @@ export const notify = onRequest({ cors: ["https://<tu-sitio>.web.app", "http://l
 // Re-exporta funciones de otros módulos (usa .js)
 export { payments_init, payments_confirm } from "./payments.js";
 export { config_public } from "./config.js";
+export { admin_upload } from "./admin.js";
 
 const cors = corsLib({ origin: true });
 
