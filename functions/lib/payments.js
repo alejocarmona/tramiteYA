@@ -83,18 +83,6 @@ function mapWompiStatus(s) {
         return { payment: "error", reason: "error" };
     return { payment: "pending", reason: "pending" };
 }
-function appendDebug(url, dbg) {
-    if (!dbg)
-        return url;
-    try {
-        const u = new URL(url);
-        u.searchParams.set("debug", dbg);
-        return u.toString();
-    }
-    catch {
-        return url + (url.includes("?") ? "&" : "?") + "debug=" + dbg;
-    }
-}
 // --- POST /payments_init ---
 exports.payments_init = (0, https_1.onRequest)(async (req, res) => {
     return cors(req, res, async () => {
@@ -118,7 +106,7 @@ exports.payments_init = (0, https_1.onRequest)(async (req, res) => {
                 return ok(res, { mode: "mock", status: "pending", reason: "wompi_config_missing" });
             }
             // Validar config mínima de Wompi
-            if (!wompi.publicKey || !wompi.integritySecret || !wompi.returnUrl) {
+            if (!wompi.publicKey || !wompi.integritySecret) {
                 console.warn("[payments_init] Config Wompi incompleta para env:", env);
                 return ok(res, { mode: "mock", status: "pending", reason: "wompi_config_incomplete" });
             }
@@ -128,44 +116,33 @@ exports.payments_init = (0, https_1.onRequest)(async (req, res) => {
             // Reference único
             const suffix = Date.now() + "-" + Math.floor(Math.random() * 1e5).toString(36);
             const reference = `${orderId}-${suffix}`.slice(0, 64);
-            // Return URL con reference
-            // PUBLIC_BASE_URL permite usar un túnel (ngrok, cloudflare) en dev local
-            // para evitar que Wompi rechace localhost en redirect-url (403 CloudFront).
-            const publicBase = process.env.PUBLIC_BASE_URL;
-            let returnUrl = publicBase
-                ? `${publicBase.replace(/\/+$/, "")}/return.html`
-                : wompi.returnUrl;
-            if (!/return\.html$/i.test(returnUrl)) {
-                if (!returnUrl.endsWith("/"))
-                    returnUrl += "/";
-                returnUrl += "return.html";
-            }
-            try {
-                const u = new URL(returnUrl);
-                u.searchParams.set("ref", reference);
-                returnUrl = u.toString();
-            }
-            catch { /* ignora */ }
             // Monto
             const amountInCents = await computeAmountInCents(db, orderId);
             const currency = "COP";
-            // Query params para checkout
-            const qs = new URLSearchParams({
-                "public-key": wompi.publicKey,
-                "amount-in-cents": String(amountInCents),
-                currency,
-                reference,
-                "redirect-url": appendDebug(returnUrl, req.query?.debug ? "1" : "")
-            });
-            // Firma de integridad
+            // Firma de integridad (usada por el Widget)
             const raw = `${reference}${amountInCents}${currency}${wompi.integritySecret}`;
             const signature = node_crypto_1.default.createHash("sha256").update(raw).digest("hex");
             console.log("[payments_init] firma generada para ref:", reference, "amount:", amountInCents);
-            const checkoutUrlBase = wompi.checkoutUrlBase || "https://checkout.wompi.co/p/";
-            // IMPORTANTE: Wompi requiere "signature:integrity" literal (no %3A).
-            // URLSearchParams codifica ":" como "%3A", así que lo agregamos manualmente.
-            const checkoutUrl = `${checkoutUrlBase}?${qs.toString()}&signature:integrity=${signature}`;
-            return ok(res, { mode: "wompi", checkoutUrl, reference, orderId });
+            // Construir redirectUrl: base de config + orderId como query param
+            let redirectUrl;
+            if (wompi.returnUrl) {
+                // Eliminar /return.html u otros paths residuales, quedarse con el origin
+                const base = wompi.returnUrl.replace(/\/[^/]*\.html.*$/, "");
+                redirectUrl = `${base}/?orderId=${encodeURIComponent(orderId)}&reference=${encodeURIComponent(reference)}`;
+            }
+            return ok(res, {
+                mode: "wompi",
+                reference,
+                orderId,
+                redirectUrl,
+                widgetParams: {
+                    publicKey: wompi.publicKey,
+                    amountInCents,
+                    currency,
+                    reference,
+                    signature,
+                },
+            });
         }
         catch (e) {
             console.error("[payments_init] error", e);

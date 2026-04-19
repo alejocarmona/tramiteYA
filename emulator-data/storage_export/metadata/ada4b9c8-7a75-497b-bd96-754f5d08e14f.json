@@ -1,0 +1,18 @@
+{
+  "name": "certificates/Wa1VPwzJY30SAAe7DSZy/sample3.pdf",
+  "bucket": "apptramiteya.firebasestorage.app",
+  "metageneration": 2,
+  "generation": 1774580131035,
+  "contentType": "application/pdf",
+  "storageClass": "STANDARD",
+  "cacheControl": "public, max-age=31536000",
+  "downloadTokens": [
+    "309796ba-48ef-4ee6-917e-b74b858f9e86"
+  ],
+  "etag": "HvYEtNLEDYlcH8eJ4Y5Nsn6IlMg",
+  "timeCreated": "2026-03-27T02:55:31.035Z",
+  "updated": "2026-03-27T02:56:44.701Z",
+  "size": 1253607,
+  "md5Hash": "yhLve557Qf3eYdHNYKbEHA==",
+  "crc32c": "4215634114"
+}

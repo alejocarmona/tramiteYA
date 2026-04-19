@@ -111,3 +111,8 @@ En el simulador de pagos tenemos 4 posibles opciones: "Pago exitoso", "Saldo ins
 La seccion de status-hero debe ser coherente con la opcion de pago seleccionado en el simulador, o por wompi. Pero en este momento status-hero esta quemado con el estado de "¡Pago aprobado!".
 Analiza porque la sesccion status-hero siempre se esta mostrando como: ¡Pago aprobado!, confirma si es porque esta quemado.
 E Identifica que cambios quirurgicos se deben aplicar y exactamente en que archivos y en que posicion, para lograr que status-hero sea dinamico segun la respuesta del simulador y de wompi, esto tanto en estilo como en texto
+
+
+Paso 1 — Sync y build Android
+npx cap sync android
+npx cap build android

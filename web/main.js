@@ -11,12 +11,10 @@ const IS_DEBUG = QS.get('debug') === '1';
 const IS_CAPACITOR = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 
 // Importa plugins de Capacitor si estamos en nativo
-let CapBrowser = null;
 let CapApp     = null;
 let CapStatusBar = null;
 if (IS_CAPACITOR) {
   try {
-    CapBrowser   = window.Capacitor.Plugins.Browser;
     CapApp       = window.Capacitor.Plugins.App;
     CapStatusBar = window.Capacitor.Plugins.StatusBar;
     // Configurar StatusBar
@@ -26,40 +24,135 @@ if (IS_CAPACITOR) {
     }
   } catch (e) { console.warn('Capacitor plugins init:', e); }
 
-  // Deep link listener: cuando Wompi redirige de vuelta a la app
-  if (CapApp) {
-    CapApp.addListener('appUrlOpen', async (event) => {
-      console.log('[Capacitor] appUrlOpen:', event.url);
-      try {
-        const url = new URL(event.url);
-        const params = url.searchParams;
-        const orderId   = params.get('orderId');
-        const txId      = params.get('id') || params.get('transactionId');
-        const reference = params.get('reference') || params.get('ref');
+/* --------------------------------------------------
+   Wompi Widget: lazy loader + wrapper
+-------------------------------------------------- */
+let _wompiReady = false, _wompiLoading = null;
+function loadWompiWidget() {
+  if (_wompiReady) return Promise.resolve();
+  if (_wompiLoading) return _wompiLoading;
+  _wompiLoading = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://checkout.wompi.co/widget.js';
+    s.onload = () => { _wompiReady = true; resolve(); };
+    s.onerror = () => { _wompiLoading = null; reject(new Error('Wompi widget.js failed to load')); };
+    document.head.appendChild(s);
+  });
+  return _wompiLoading;
+}
 
-        if (txId || reference) {
-          let confirmUrl = `payments_confirm?`;
-          if (txId) confirmUrl += `transactionId=${encodeURIComponent(txId)}`;
-          if (reference) confirmUrl += `${txId ? '&' : ''}reference=${encodeURIComponent(reference)}`;
-          await api(confirmUrl);
-        }
+// Referencia activa del pago en curso (para resolver desde appStateChange)
+let _activePaymentRef = null;
+let _resolveWidgetExternally = null;
 
-        if (orderId || reference) {
-          const oid = orderId || (reference ? reference.split('-')[0] : '');
-          if (oid && typeof refreshOrderById === 'function') {
-            refreshOrderById(oid);
-          }
-        }
-      } catch (e) { console.error('[Capacitor] deep link error:', e); }
+// Persistencia de pago activo en localStorage (sobrevive force-close)
+const LS_PENDING_PAY = 'tya_pending_payment';
+function savePendingPayment(ref, orderId) {
+  try { localStorage.setItem(LS_PENDING_PAY, JSON.stringify({ reference: ref, orderId, ts: Date.now() })); } catch {}
+}
+function clearPendingPayment() {
+  try { localStorage.removeItem(LS_PENDING_PAY); } catch {}
+}
+function loadPendingPayment() {
+  try {
+    const raw = localStorage.getItem(LS_PENDING_PAY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    // Expirar después de 30 minutos
+    if (Date.now() - (data.ts || 0) > 30 * 60 * 1000) { clearPendingPayment(); return null; }
+    return data;
+  } catch { return null; }
+}
+
+function openWompiWidget(params, redirectUrl) {
+  _activePaymentRef = params.reference;
+  return new Promise((resolve, reject) => {
+    const widgetOpts = {
+      currency:              params.currency,
+      amountInCents:         params.amountInCents,
+      reference:             params.reference,
+      publicKey:             params.publicKey,
+      'signature:integrity': params.signature,
+    };
+    if (redirectUrl) widgetOpts.redirectUrl = redirectUrl;
+    const checkout = new WidgetCheckout(widgetOpts);
+
+    let done = false;
+
+    function finish() { clearInterval(poll); clearTimeout(timer); _activePaymentRef = null; _resolveWidgetExternally = null; }
+
+    // Permitir resolver desde fuera (cuando la app vuelve del navegador PSE)
+    _resolveWidgetExternally = (result) => {
+      if (done) return;
+      done = true;
+      finish();
+      resolve(result);
+    };
+
+    checkout.open(function (result) {
+      if (done) return;
+      done = true;
+      finish();
+      resolve({
+        transactionId: result.transaction.id,
+        status:        result.transaction.status,
+        reference:     result.transaction.reference,
+      });
     });
 
-    // También escuchar cuando la app vuelve al frente (por si el usuario completa pago)
-    CapApp.addListener('appStateChange', (state) => {
-      if (state.isActive && window.__lastOrderId) {
-        console.log('[Capacitor] app resumed, refreshing order:', window.__lastOrderId);
-        if (typeof refreshOrderById === 'function') {
-          refreshOrderById(window.__lastOrderId);
+    // Detectar cierre del widget sin completar pago (no hay evento nativo).
+    let widgetAppeared = false;
+    const poll = setInterval(() => {
+      if (done) { finish(); return; }
+      const frame = document.querySelector('iframe[src*="wompi"]')
+                 || document.querySelector('.waybox-modal')
+                 || document.querySelector('[class*="waybox"]');
+      if (frame) {
+        widgetAppeared = true;
+      } else if (widgetAppeared) {
+        done = true;
+        finish();
+        reject(new Error('Widget cerrado sin completar pago'));
+      }
+    }, 500);
+
+    // Timeout de seguridad: 5 minutos
+    const timer = setTimeout(() => {
+      if (!done) { done = true; finish(); reject(new Error('Widget timeout')); }
+    }, 300000);
+  });
+}
+
+  if (CapApp) {
+    // Escuchar cuando la app vuelve al frente (por si el usuario completa pago en Widget)
+    CapApp.addListener('appStateChange', async (state) => {
+      if (!state.isActive) return;
+      console.log('[Capacitor] app resumed, activePaymentRef:', _activePaymentRef, 'lastOrderId:', window.__lastOrderId);
+
+      // Si hay un pago de widget pendiente (usuario volvió del navegador PSE)
+      if (_activePaymentRef && _resolveWidgetExternally) {
+        try {
+          const confirmResult = await api(`payments_confirm?reference=${encodeURIComponent(_activePaymentRef)}`);
+          console.log('[Capacitor] confirm on resume:', confirmResult);
+          _resolveWidgetExternally({
+            transactionId: confirmResult?.transactionId || null,
+            status:        confirmResult?.payment || 'pending',
+            reference:     _activePaymentRef,
+          });
+        } catch (e) {
+          console.warn('[Capacitor] confirm on resume failed:', e);
+          _resolveWidgetExternally({
+            transactionId: null,
+            status:        'pending',
+            reference:     _activePaymentRef,
+          });
         }
+        return;
+      }
+
+      // Refresh normal (sin widget activo)
+      if (window.__lastOrderId && typeof refreshOrderById === 'function') {
+        refreshOrderById(window.__lastOrderId);
       }
     });
     // Back button hardware (complementa el handler nativo en MainActivity.java)
@@ -650,10 +743,25 @@ async function loadServices() {
   S.services.innerHTML = '<div style="text-align:center;padding:32px 0;color:var(--muted)"><div class="spinner" style="margin:0 auto 12px;width:32px;height:32px;border:3px solid #e2e8f0;border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite"></div>Cargando servicios…</div>';
   S.empty.classList.add('hidden');
 
-  let data;
-  try {
-    data = await api('services');
-  } catch (e) {
+  // Auto-retry con backoff (hasta 3 intentos silenciosos antes de mostrar error)
+  const MAX_RETRIES = 3;
+  const DELAYS = [2000, 4000, 8000]; // ms entre reintentos
+  let data = null;
+  let lastErr = null;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      data = await api('services', { silent: true });
+      lastErr = null;
+      break;
+    } catch (e) {
+      lastErr = e;
+      console.warn(`[loadServices] intento ${attempt + 1}/${MAX_RETRIES + 1} falló:`, e?.message || e);
+      if (attempt < MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, DELAYS[attempt]));
+      }
+    }
+  }
+  if (lastErr || !data) {
     S.services.innerHTML = '<div style="text-align:center;padding:32px 0;color:var(--danger)">No pudimos cargar los servicios.<br><button class="btn ghost" onclick="loadServices()" style="margin-top:12px">Reintentar</button></div>';
     return;
   }
@@ -855,47 +963,56 @@ async function createOrder() {
       method:'POST',
       body: JSON.stringify({ orderId: order.id })
     });
-    console.log('[createOrder] /payments_init OK', payInit);
+    console.log('[createOrder] /payments_init OK', JSON.stringify(payInit));
 
-    // === Wompi checkout ===
-    if (payInit?.mode === 'wompi' && payInit.checkoutUrl) {
-      console.log('[createOrder] Checkout URL:', payInit.checkoutUrl);
-
-      // Capacitor: abrir en browser in-app (Custom Tab)
-      if (IS_CAPACITOR && CapBrowser) {
-        console.log('[Capacitor] Abriendo Wompi en Browser');
-        // Al cerrar el browser, verificar estado del pago
-        const closeListener = await CapBrowser.addListener('browserFinished', async () => {
-          closeListener?.remove();
-          console.log('[Capacitor] Browser cerrado, verificando pago...');
-          try {
-            const status = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
-            renderStatus(status);
-            updateHistoryStatus(currentOrder.id, { status: status.status, payment: status.payment, delivery: status.delivery ?? null });
-            maybeNotifyPaid(status);
-            if (normalizePayment(status.payment) === 'paid' && normalizeOrderStatus(status.status) !== 'delivered') {
-              pollForDelivery(currentOrder.id);
-            }
-          } catch (e) { console.warn('[Capacitor] Error verificando pago:', e); }
-        });
-
-        await CapBrowser.open({ url: payInit.checkoutUrl });
-        disableFormInputs(false); lockHeader(false); lockNavigation(false);
+    // === Wompi Widget (pago dentro de la app, sin salir al navegador) ===
+    if (payInit?.mode === 'wompi' && payInit.widgetParams) {
+      console.log('[createOrder] Abriendo Wompi Widget');
+      try {
+        setBtnLoading(S.btnCreate, true, "Cargando pasarela…");
+        await loadWompiWidget();
         setBtnLoading(S.btnCreate, false, "", "Crear orden");
-        show(S.status);
-        try {
-          const status = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
-          renderStatus(status);
-        } catch {}
-        return;
-      }
 
-      // Web: redirect (replace para no dejar Wompi en historial)
-      location.replace(payInit.checkoutUrl);
+        // Persistir referencia antes de abrir widget (sobrevive force-close / PSE redirect)
+        savePendingPayment(payInit.widgetParams.reference, order.id);
+
+        // Abrir widget con redirectUrl (PSE necesita saber a dónde volver)
+        const result = await openWompiWidget(payInit.widgetParams, payInit.redirectUrl);
+        console.log('[createOrder] Widget result:', result);
+        clearPendingPayment();
+
+        // Widget resuelto — ahora sí desbloquear UI y mostrar status
+        disableFormInputs(false); lockHeader(false); lockNavigation(false);
+        show(S.status);
+
+        // Confirmar server-side
+        const parts = [];
+        if (result.transactionId) parts.push(`transactionId=${encodeURIComponent(result.transactionId)}`);
+        if (result.reference) parts.push(`reference=${encodeURIComponent(result.reference)}`);
+        if (parts.length) await api(`payments_confirm?${parts.join('&')}`).catch(e => console.warn('[createOrder] confirm error:', e));
+
+        // Renderizar estado final
+        const st = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
+        renderStatus(st);
+        updateHistoryStatus(currentOrder.id, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
+        maybeNotifyPaid(st);
+        if (normalizePayment(st.payment) === 'paid' && normalizeOrderStatus(st.status) !== 'delivered') {
+          pollForDelivery(currentOrder.id);
+        }
+      } catch (e) {
+        console.error('[createOrder] Widget error/dismissed:', e);
+        disableFormInputs(false); lockHeader(false); lockNavigation(false);
+        showBanner(`Error pasarela: ${e?.message || e}`, 'error', true);
+        try {
+          const st = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
+          renderStatus(st);
+          updateHistoryStatus(currentOrder.id, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
+        } catch {}
+        show(S.status);
+      }
       return;
     }
 
-// ...existing code...
 if (payInit?.mode === 'mock') {
   // Mostrar simulador de pago en modo mock
   if (S.paySim) {
@@ -1110,6 +1227,68 @@ function updateHero(order) {
    Render Status (dispara confeti)
 ===================== */
 // ...existing code...
+async function retryPayment(orderId) {
+  const btn = document.getElementById('btn-retry-payment');
+  if (btn) { btn.disabled = true; btn.textContent = 'Procesando…'; }
+  try {
+    const payInit = await api('payments_init', {
+      method: 'POST',
+      body: JSON.stringify({ orderId })
+    });
+
+    // === Wompi Widget (pago dentro de la app) ===
+    if (payInit?.mode === 'wompi' && payInit.widgetParams) {
+      try {
+        if (btn) { btn.disabled = true; btn.textContent = 'Cargando pasarela…'; }
+        await loadWompiWidget();
+        if (btn) { btn.disabled = false; btn.textContent = '🔄 Reintentar pago'; }
+
+        savePendingPayment(payInit.widgetParams.reference, orderId);
+        const result = await openWompiWidget(payInit.widgetParams, payInit.redirectUrl);
+        console.log('[retryPayment] Widget result:', result);
+        clearPendingPayment();
+
+        // Confirmar server-side
+        const parts = [];
+        if (result.transactionId) parts.push(`transactionId=${encodeURIComponent(result.transactionId)}`);
+        if (result.reference) parts.push(`reference=${encodeURIComponent(result.reference)}`);
+        if (parts.length) await api(`payments_confirm?${parts.join('&')}`).catch(e => console.warn('[retryPayment] confirm error:', e));
+
+        const st = await api(`orders?id=${encodeURIComponent(orderId)}`);
+        renderStatus(st);
+        updateHistoryStatus(orderId, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
+        maybeNotifyPaid(st);
+        if (normalizePayment(st.payment) === 'paid' && normalizeOrderStatus(st.status) !== 'delivered') {
+          pollForDelivery(orderId);
+        }
+      } catch (e) {
+        console.error('[retryPayment] Widget error/dismissed:', e);
+        showBanner(`Error pasarela: ${e?.message || e}`, 'error', true);
+        try {
+          const st = await api(`orders?id=${encodeURIComponent(orderId)}`);
+          renderStatus(st);
+          updateHistoryStatus(orderId, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
+        } catch {}
+      }
+      if (btn) { btn.disabled = false; btn.textContent = '🔄 Reintentar pago'; }
+      return;
+    }
+
+    if (payInit?.mode === 'mock') {
+      showBanner('Modo simulado activo. Usa el simulador de pago para confirmar.', 'info');
+      if (btn) { btn.disabled = false; btn.textContent = '🔄 Reintentar pago'; }
+      return;
+    }
+
+    showBanner('No se pudo iniciar el pago. Intenta más tarde.', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Reintentar pago'; }
+  } catch (e) {
+    console.error('[retryPayment] error:', e);
+    showBanner(e?.message || 'No se pudo reintentar el pago.', 'error', true);
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Reintentar pago'; }
+  }
+}
+
 function renderStatus(order) {
   // Actualiza hero dinámico (antes de calcular badge para consistencia)
   updateHero(order);
@@ -1358,6 +1537,19 @@ function updatePriceUI(ctx) {
   const follow = document.getElementById('followup-card');
   if (follow) follow.style.display = isTerminalOrder(order) ? 'none' : '';
 
+  // Reintentar pago (solo para estados fallidos)
+  const retryBlock = document.getElementById('retry-payment-actions');
+  if (retryBlock) {
+    const pnormR = normalizePayment(order.payment);
+    const isFailedPayment = ['rejected', 'canceled', 'error'].includes(pnormR);
+    const isAlreadyPaid   = pnormR === 'paid';
+    retryBlock.style.display = (isFailedPayment && !isAlreadyPaid) ? '' : 'none';
+    if (isFailedPayment) {
+      const btn = document.getElementById('btn-retry-payment');
+      if (btn) btn.dataset.orderId = order.id || '';
+    }
+  }
+
   // WhatsApp contextual
   setFabWhatsApp(order);
 }
@@ -1371,12 +1563,37 @@ document.addEventListener('DOMContentLoaded', async () => {
   const showDebug = new URLSearchParams(location.search).get('debug') === '1';
   if (debugCard) debugCard.style.display = showDebug ? 'block' : 'none';
 
-  // NUEVO: si regresamos con ?orderId=..., cargar estado y pintar hero dinámico
-   // [CONSERVAR – bloque robusto con reconfirmación y polling]
-  // [ÚNICO bloque de retorno]
+  // Recuperar pago pendiente de localStorage (sobrevive force-close y redirección PSE)
   const q = new URLSearchParams(location.search);
   const orderIdFromQS = q.get('orderId');
+  const pendingPay = loadPendingPayment();
+  if (!orderIdFromQS && pendingPay) {
+    // App reabierta tras force-close con pago PSE en curso
+    console.log('[startup] Recuperando pago pendiente:', pendingPay);
+    clearPendingPayment();
+    try {
+      await api(`payments_confirm?reference=${encodeURIComponent(pendingPay.reference)}`);
+    } catch (e) { console.warn('[startup] confirm pendiente skip:', e); }
+    try {
+      const st = await api(`orders?id=${encodeURIComponent(pendingPay.orderId)}`, { ignore404: true, silent: true });
+      if (st) {
+        renderStatus(st);
+        updateHistoryStatus(pendingPay.orderId, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
+        maybeNotifyPaid(st);
+        show(S.status);
+        if (normalizePayment(st.payment) === 'pending') {
+          pollForDelivery(pendingPay.orderId);
+        }
+      }
+    } catch {}
+  }
+
+  // Si regresamos con ?orderId=..., cargar estado y pintar hero dinámico
+  // [CONSERVAR – bloque robusto con reconfirmación y polling]
   if (orderIdFromQS) {
+    // Guardar reference del pago pendiente ANTES de limpiarlo (se usa como fallback en reconfirmación)
+    const pendingRef = (pendingPay && pendingPay.orderId === orderIdFromQS) ? pendingPay.reference : null;
+    if (pendingRef) clearPendingPayment();
     try {
       let st = await api(`orders?id=${encodeURIComponent(orderIdFromQS)}`, { ignore404: true, silent: true });
       if (!st) {
@@ -1405,12 +1622,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const isPending = (normalizePayment(st.payment) === 'pending');
         if (isWompi && isPending) {
           const txId = q.get('id') || q.get('transactionId') || '';
-          const ref  = q.get('reference') || q.get('ref') || '';
+          const ref  = q.get('reference') || q.get('ref') || pendingRef || '';
           try {
             const parts = [];
             if (txId) parts.push(`transactionId=${encodeURIComponent(txId)}`);
             if (ref)  parts.push(`reference=${encodeURIComponent(ref)}`);
-            if (parts.length) await api(`payments_confirm?${parts.join('&')}`);
+            parts.push(`orderId=${encodeURIComponent(orderIdFromQS)}`);
+            await api(`payments_confirm?${parts.join('&')}`);
           } catch (e) { console.warn('[return] reconfirm skip:', e); }
           for (let i = 0; i < 3; i++) {
             await new Promise(r => setTimeout(r, 600 * (i + 1)));
@@ -1459,6 +1677,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   if (S.btnBack)  S.btnBack.addEventListener('click', () => { cleanOrderUrl(); show(S.list); });
   if (S.btnRetry) S.btnRetry.addEventListener('click', () => { cleanOrderUrl(); show(S.list); loadServices(); });
+
+  document.getElementById('btn-retry-payment')?.addEventListener('click', () => {
+    const btn = document.getElementById('btn-retry-payment');
+    const oid = btn?.dataset?.orderId || window.__lastOrderId || '';
+    if (!oid) { showBanner('No se encontró el ID de la orden.', 'error'); return; }
+    retryPayment(oid).catch(e => console.error('[retryPayment] unhandled:', e));
+  });
   if (S.btnCreate) {
     S.btnCreate.addEventListener('click', (e) => { e.preventDefault(); createOrder().catch(err => alert(err.message)); });
   }

@@ -62,8 +62,8 @@ export interface WompiEnvConfig {
   integritySecret: string;
   eventsSecret?: string;
   apiUrl: string;          // "https://api-sandbox.wompi.co" o "https://api.wompi.co"
-  checkoutUrlBase: string; // "https://checkout.wompi.co/p/"
-  returnUrl: string;       // URL de retorno tras pago
+  returnUrl?: string;      // URL base de retorno tras pago PSE (ej: "https://apptramiteya.web.app")
+  checkoutUrlBase?: string;
 }
 
 export interface PaymentsConfig {

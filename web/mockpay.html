@@ -32,9 +32,17 @@
     const orderId = params.get('orderId') || '';
     if (!orderId) alert('Falta orderId en la URL.');
 
-    function go(scenario){
-      const url = `/return.html?orderId=${encodeURIComponent(orderId)}&scenario=${encodeURIComponent(scenario)}`;
-      location.href = url;
+    async function go(scenario){
+      document.querySelectorAll('.btn').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
+      try {
+        const r = await fetch('/payments_confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId, scenario })
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      } catch (e) { console.error('Mock confirm error:', e); }
+      location.replace(`/?orderId=${encodeURIComponent(orderId)}`);
     }
   </script>
 </body>

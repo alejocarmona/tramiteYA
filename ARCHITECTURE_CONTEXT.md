@@ -168,10 +168,10 @@ sequenceDiagram
         CF->>FS: Lee config/public.wompi.publicKey
         CF->>FS: Lee flags/secure.wompi.integritySecret
         CF->>CF: Genera HMAC signature (reference+amount+currency+secret)
-        CF-->>F: { mode: 'wompi', checkoutUrl: 'https://checkout.wompi.co/p/?...' }
-        F->>W: window.location.href = checkoutUrl (redirect)
-        U->>W: Completa pago en Wompi
-        W->>H: Redirect a returnUrl?ref=ABC123&status=APPROVED
+        CF-->>F: { mode: 'wompi', widgetParams: { publicKey, amountInCents, currency, reference, signature } }
+        F->>F: Abre Wompi Widget (iframe) con widgetParams
+        U->>W: Completa pago en Widget
+        W-->>F: Widget callback con transactionId
         F->>H: POST /payments_confirm { reference }
         H->>CF: Rewrite a payments_confirm(req,res)
         CF->>W: GET /v1/transactions?reference=ABC123
@@ -203,7 +203,7 @@ sequenceDiagram
 Persistencia de Datos (Firestore Schema)
 firestore/
 ├── config/
-│   ├── public              # API keys públicas, returnUrl
+│   ├── public              # API keys públicas
 │   └── secure (opcional)   # Fallback para claves privadas
 ├── flags/
 │   ├── global              # { payments: { useMock: bool } }
@@ -224,8 +224,7 @@ Propósito: Single Page Application vanilla JS que interactúa con Firebase Func
 Archivo	Responsabilidad
 index.html	Shell HTML con 3 pantallas ocultas/visibles vía .hidden class. Contiene todo el CSS inline y estructura del DOM.
 main.js	Core lógico: Maneja routing client-side, llamadas a API con fetch(), renderizado dinámico de formularios, manejo de LocalStorage para historial, animaciones de confetti. ~1400 líneas.
-mockpay.html	Página standalone para simular checkout de Wompi (testing sin API real).
-return.html	Landing page después de pago con Wompi. Extrae query params y llama a /payments_confirm.
+mockpay.html	Página standalone para simular checkout de Wompi (testing sin API real). Confirma pago vía fetch y redirige al home.
 manifest.json	Configuración PWA (nombre, íconos, theme color).
 Puntos de Entrada:
 

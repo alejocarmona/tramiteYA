@@ -620,7 +620,7 @@ dialog#about-modal .muted { color: #64748b; font-size: 12px; }
     <div id="empty" class="muted hidden">No hay trámites disponibles.</div>
     <div class="hr"></div>
     <div id="history" class="">
-      <h1 id="history-title" class="page-title">Mis solicitudes (en este dispositivo)</h1>
+      <h1 id="history-title" class="page-title">Mis solicitudes<br><small style="font-size:0.65em;font-weight:400;color:#64748b;">(en este dispositivo)</small></h1>
       <div class="row">
         <div class="muted">Solo visibles en este teléfono</div>
         <div class="spacer"></div>
@@ -821,12 +821,17 @@ dialog#about-modal .muted { color: #64748b; font-size: 12px; }
 <!-- Acciones de certificado (solo visible cuando delivered) -->
 <div id="cert-actions" style="display:none; margin-top:0.75rem;">
   <a id="download-cert-link" class="btn primary">📄 Descargar certificado</a>
-  <a id="share-wa" class="btn">📲 Compartir por WhatsApp</a>
-  <a id="share-mail" class="btn">✉️ Enviar por correo</a>
+  <a id="share-wa" class="btn" style="display:none">📲 Compartir por WhatsApp</a>
+  <a id="share-mail" class="btn" style="display:none">✉️ Enviar por correo</a>
 </div>
 
 
 
+
+<!-- Reintentar pago (solo visible cuando pago fallido) -->
+<div id="retry-payment-actions" style="display:none; margin-top:0.75rem;">
+  <button id="btn-retry-payment" class="btn primary">🔄 Reintentar pago</button>
+</div>
 
 <!-- Utilidad para operador -->
  <div id="op-actions" class="hidden">

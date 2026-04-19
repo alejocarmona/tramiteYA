@@ -1,6 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import type { Request, Response } from "express";
 import corsLib from "cors";
+import nodemailer from "nodemailer";
 import { ensureFirebase } from "./utils.js";
 import { getStorage } from "firebase-admin/storage";
 
@@ -86,6 +87,53 @@ export const admin_upload = onRequest(async (req: Request, res: Response) => {
       }, { merge: true });
 
       console.log("[admin_upload] Certificado subido para orden:", orderId, "→", fileUrl);
+
+      // --- Notificar al cliente por email ---
+      try {
+        const adminData = adminSnap.data() as any;
+        const { gmailUser, gmailAppPassword } = adminData || {};
+        const orderData = orderSnap.data() as any;
+        const clientEmail = orderData?.contact?.email;
+        const clientName  = orderData?.contact?.name || "Cliente";
+        const serviceName = orderData?.serviceName || orderData?.service_id || "Trámite";
+        const shortId     = String(orderId).slice(0, 8);
+
+        if (clientEmail && gmailUser && gmailAppPassword) {
+          const transporter = nodemailer.createTransport({
+            service: "gmail",
+            auth: { user: gmailUser, pass: gmailAppPassword },
+          });
+          const htmlBody = `
+            <div style="font-family:system-ui,Arial;max-width:600px;margin:0 auto;">
+              <h2 style="color:#16a34a;">Tu certificado está listo</h2>
+              <p>Hola ${clientName}, tu trámite <strong>${serviceName}</strong> fue procesado exitosamente.</p>
+              <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+                <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;color:#64748b;">N° de orden</td>
+                    <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-weight:600;">${shortId}</td></tr>
+              </table>
+              <p style="margin:16px 0;">
+                <a href="${fileUrl}" style="background:#16a34a;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
+                  📄 Descargar certificado
+                </a>
+              </p>
+              <p style="color:#64748b;font-size:0.85rem;">Si el botón no funciona, copia este enlace en tu navegador:<br>${fileUrl}</p>
+              <p style="color:#94a3b8;font-size:0.8rem;margin-top:24px;">TrámiteYA — agilizamos tus trámites en Colombia.</p>
+            </div>
+          `;
+          await transporter.sendMail({
+            from: `"TramiteYA" <${gmailUser}>`,
+            to: clientEmail,
+            subject: `Tu certificado está listo - ${serviceName} (Orden ${shortId})`,
+            html: htmlBody,
+          });
+          console.log("[admin_upload] Email de entrega enviado a", clientEmail);
+        } else {
+          console.warn("[admin_upload] No se envió email al cliente: falta clientEmail o config Gmail");
+        }
+      } catch (emailErr) {
+        console.error("[admin_upload] Error enviando email al cliente:", emailErr);
+        // No falla el upload si el email falla
+      }
 
       return ok(res, { ok: true, orderId, fileUrl });
     } catch (e: any) {

@@ -14,10 +14,6 @@
   "wompi": {
     "publicKey": "pub_test_4XFzba6OCyX859Ed1dPFqPQsL4Rg38Dc",
     "apiUrl": "https://sandbox.wompi.co",
-    "checkoutUrlBase": "https://checkout.wompi.co/p/"
-  },
-  "app": {
-    "returnUrl": "http://localhost:5000/"
   }
 }
 ```
@@ -134,7 +130,6 @@ node lib/scripts/seedServices.js
 - [ ] Colección `flags/secure` existe con claves privadas de Wompi (secretKey, integritySecret)
 - [ ] Colección `services` tiene al menos 6 servicios (ejecutar seed)
 - [ ] Las claves de Wompi son reales (no placeholders)
-- [ ] El returnUrl en config/public apunta a tu dominio correcto
 
 ---
 

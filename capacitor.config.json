@@ -3,7 +3,8 @@
   "appName": "TrámiteYA",
   "webDir": "web",
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "allowNavigation": ["*.wompi.co", "*.wompi.com", "*.pse.com.co", "*.bancolombia.com", "*.nequi.com", "*.davivienda.com", "*.bbva.com.co", "*.bancodebogota.com"]
   },
   "plugins": {
     "SplashScreen": {
