@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tramiteya-v3';
+const CACHE_NAME = 'tramiteya-v4';
 
 // Archivos que NUNCA se cachean — siempre se leen frescos del APK/hosting
 const NO_CACHE = ['/', '/index.html', '/main.js'];

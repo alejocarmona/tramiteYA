@@ -23,6 +23,7 @@ if (IS_CAPACITOR) {
       CapStatusBar.setStyle({ style: 'LIGHT' });
     }
   } catch (e) { console.warn('Capacitor plugins init:', e); }
+}
 
 /* --------------------------------------------------
    Wompi Widget: lazy loader + wrapper
@@ -44,11 +45,67 @@ function loadWompiWidget() {
 // Referencia activa del pago en curso (para resolver desde appStateChange)
 let _activePaymentRef = null;
 let _resolveWidgetExternally = null;
+let _bgPollTimer = null; // Background poll tras retry fallido
+
+function _stopBgPoll() {
+  if (_bgPollTimer) { clearInterval(_bgPollTimer); _bgPollTimer = null; }
+}
+
+// Background poll: confirma solo la referencia actual cada 10s, máx 5 min.
+// Para en cualquier estado terminal o si el usuario navega a otra orden.
+function _startBgPoll(ref, orderId) {
+  _stopBgPoll();
+  const started = Date.now();
+  const MAX_DURATION = 5 * 60 * 1000; // 5 minutos
+  _bgPollTimer = setInterval(async () => {
+    // Parar si el usuario cambió de orden o superó el máximo
+    if (window.__lastOrderId !== orderId || Date.now() - started > MAX_DURATION) {
+      _stopBgPoll();
+      return;
+    }
+    try {
+      const r = await api(`payments_confirm?reference=${encodeURIComponent(ref)}`, { silent: true });
+      const s = String(r?.status || r?.payment || '').toLowerCase();
+      if (['paid', 'rejected', 'canceled', 'error'].includes(s)) {
+        _stopBgPoll();
+        // Refrescar la vista con el estado definitivo
+        const st = await api(`orders?id=${encodeURIComponent(orderId)}`, { silent: true });
+        if (st && window.__lastOrderId === orderId) {
+          renderStatus(st);
+          updateHistoryStatus(orderId, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
+          const pnorm = normalizePayment(st.payment);
+          if (pnorm === 'paid') {
+            removePendingRefsForOrder(orderId);
+            hideBanner();
+            maybeNotifyPaid(st);
+            if (normalizeOrderStatus(st.status) !== 'delivered') pollForDelivery(orderId);
+          } else {
+            hideBanner();
+          }
+        }
+      }
+    } catch { /* silenciar — se reintenta en el siguiente tick */ }
+  }, 10000);
+}
 
 // Persistencia de pago activo en localStorage (sobrevive force-close)
 const LS_PENDING_PAY = 'tya_pending_payment';
+const LS_PENDING_REFS = 'tya_pending_refs'; // mapa orderId → array de referencias pendientes
 function savePendingPayment(ref, orderId) {
-  try { localStorage.setItem(LS_PENDING_PAY, JSON.stringify({ reference: ref, orderId, ts: Date.now() })); } catch {}
+  try {
+    localStorage.setItem(LS_PENDING_PAY, JSON.stringify({ reference: ref, orderId, ts: Date.now() }));
+    // Guardar también en el mapa multi-reference
+    const map = loadAllPendingRefs();
+    if (!map[orderId]) map[orderId] = [];
+    map[orderId].push({ ref, ts: Date.now() });
+    // Limpiar viejos (>1h)
+    const cutoff = Date.now() - 60 * 60 * 1000;
+    Object.keys(map).forEach(k => {
+      map[k] = map[k].filter(x => x.ts > cutoff);
+      if (!map[k].length) delete map[k];
+    });
+    localStorage.setItem(LS_PENDING_REFS, JSON.stringify(map));
+  } catch {}
 }
 function clearPendingPayment() {
   try { localStorage.removeItem(LS_PENDING_PAY); } catch {}
@@ -58,10 +115,70 @@ function loadPendingPayment() {
     const raw = localStorage.getItem(LS_PENDING_PAY);
     if (!raw) return null;
     const data = JSON.parse(raw);
-    // Expirar después de 30 minutos
     if (Date.now() - (data.ts || 0) > 30 * 60 * 1000) { clearPendingPayment(); return null; }
     return data;
   } catch { return null; }
+}
+function loadAllPendingRefs() {
+  try { return JSON.parse(localStorage.getItem(LS_PENDING_REFS) || '{}'); }
+  catch { return {}; }
+}
+function getPendingRefsForOrder(orderId) {
+  const map = loadAllPendingRefs();
+  return (map[orderId] || []).map(x => x.ref);
+}
+function removePendingRefsForOrder(orderId) {
+  try {
+    const map = loadAllPendingRefs();
+    delete map[orderId];
+    localStorage.setItem(LS_PENDING_REFS, JSON.stringify(map));
+  } catch {}
+}
+
+// Confirma server-side todas las referencias pendientes de una orden hasta obtener estado terminal.
+// Itera del más reciente al más antiguo — los retries más nuevos tienen prioridad.
+// Si la ref más nueva aún no existe en Wompi (404), NO cae a refs viejas para evitar
+// que una tx declinada anterior sobreescriba el estado en Firestore.
+async function confirmAllPendingRefs(orderId) {
+  const refs = [...getPendingRefsForOrder(orderId)].reverse();
+  if (!refs.length) return null;
+  let terminal = null;
+  for (const ref of refs) {
+    try {
+      const r = await api(`payments_confirm?reference=${encodeURIComponent(ref)}`, { silent: true });
+      const s = String(r?.status || r?.payment || '').toLowerCase();
+      if (s === 'paid') { terminal = r; break; }
+      if (['rejected','canceled','error'].includes(s)) { terminal = terminal || r; }
+    } catch {
+      // 404 o error de red: la tx puede no estar indexada aún en Wompi.
+      // NO seguir con refs más antiguas — confirmarlas escribiría datos obsoletos a Firestore.
+      break;
+    }
+  }
+  return terminal;
+}
+
+// Intenta confirmar un pago con reintentos para cubrir delay de Wompi registrando la tx.
+// Acepta cualquier terminal state (paid/rejected/canceled/error) como final — solo reintenta si está pending o falló.
+async function confirmPaymentWithRetry(reference, transactionId = null, attempts = 5, delayMs = 2000) {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const parts = [];
+      if (transactionId) parts.push(`transactionId=${encodeURIComponent(transactionId)}`);
+      if (reference) parts.push(`reference=${encodeURIComponent(reference)}`);
+      if (!parts.length) return null;
+      const r = await api(`payments_confirm?${parts.join('&')}`, { silent: true });
+      const s = String(r?.status || r?.payment || '').toLowerCase();
+      console.log(`[confirmPaymentWithRetry] intento ${i+1}/${attempts}:`, r, 'status=', s);
+      // Estados terminales: no reintentar
+      if (['paid', 'rejected', 'canceled', 'error'].includes(s)) return r;
+      if (i < attempts - 1) await new Promise(res => setTimeout(res, delayMs));
+    } catch (e) {
+      console.warn(`[confirmPaymentWithRetry] intento ${i+1} falló:`, e?.message || e);
+      if (i < attempts - 1) await new Promise(res => setTimeout(res, delayMs));
+    }
+  }
+  return null;
 }
 
 function openWompiWidget(params, redirectUrl) {
@@ -78,21 +195,34 @@ function openWompiWidget(params, redirectUrl) {
     const checkout = new WidgetCheckout(widgetOpts);
 
     let done = false;
+    let graceTimer = null;
 
-    function finish() { clearInterval(poll); clearTimeout(timer); _activePaymentRef = null; _resolveWidgetExternally = null; }
+    // Bloquear toques en todo el contenido excepto el widget de Wompi.
+    // Evita que Android WebView despache touch events al contenido subyacente.
+    function blockPageTouch() {
+      document.querySelectorAll('body > *:not(.waybox-modal)').forEach(el => { el.style.pointerEvents = 'none'; });
+    }
+    function restorePageTouch() {
+      document.querySelectorAll('body > *').forEach(el => { el.style.pointerEvents = ''; });
+    }
+
+    // Full cleanup: clear everything (used on successful resolution)
+    function finishFull() { clearInterval(poll); clearTimeout(timer); clearTimeout(graceTimer); _activePaymentRef = null; _resolveWidgetExternally = null; restorePageTouch(); }
+    // Partial cleanup: clear timers but preserve _activePaymentRef for Capacitor appStateChange (used on poller rejection)
+    function finishPartial() { clearInterval(poll); clearTimeout(timer); clearTimeout(graceTimer); _resolveWidgetExternally = null; restorePageTouch(); }
 
     // Permitir resolver desde fuera (cuando la app vuelve del navegador PSE)
     _resolveWidgetExternally = (result) => {
       if (done) return;
       done = true;
-      finish();
+      finishFull();
       resolve(result);
     };
 
     checkout.open(function (result) {
       if (done) return;
       done = true;
-      finish();
+      finishFull();
       resolve({
         transactionId: result.transaction.id,
         status:        result.transaction.status,
@@ -100,26 +230,38 @@ function openWompiWidget(params, redirectUrl) {
       });
     });
 
-    // Detectar cierre del widget sin completar pago (no hay evento nativo).
+    // Bloquear toques en el resto de la página mientras Wompi esté abierto
+    blockPageTouch();
+
+    // Detectar cierre del widget (Wompi NO dispara callback al cerrar con X).
+    // El modal puede quedarse en DOM pero oculto (hidden attr, display:none, clase de cierre).
     let widgetAppeared = false;
     const poll = setInterval(() => {
-      if (done) { finish(); return; }
-      const frame = document.querySelector('iframe[src*="wompi"]')
-                 || document.querySelector('.waybox-modal')
-                 || document.querySelector('[class*="waybox"]');
-      if (frame) {
+      if (done) { clearInterval(poll); return; }
+      const modal = document.querySelector('.waybox-modal');
+      const frame = modal || document.querySelector('iframe[src*="wompi"]');
+      // Determinar si el widget está realmente visible
+      const isVisible = frame && !frame.hidden
+        && (!modal || (getComputedStyle(modal).display !== 'none'
+            && !modal.classList.contains('waybox-modal-final-close')));
+      if (isVisible) {
         widgetAppeared = true;
-      } else if (widgetAppeared) {
-        done = true;
-        finish();
-        reject(new Error('Widget cerrado sin completar pago'));
+      } else if (widgetAppeared && !graceTimer) {
+        // Widget desapareció o fue ocultado — grace period corto
+        graceTimer = setTimeout(() => {
+          if (!done) {
+            done = true;
+            finishPartial();
+            reject(new Error('Widget cerrado sin completar pago'));
+          }
+        }, 1500);
       }
-    }, 500);
+    }, 300);
 
-    // Timeout de seguridad: 5 minutos
+    // Timeout de seguridad: 2 minutos (suficiente para PSE)
     const timer = setTimeout(() => {
-      if (!done) { done = true; finish(); reject(new Error('Widget timeout')); }
-    }, 300000);
+      if (!done) { done = true; finishPartial(); reject(new Error('Widget timeout')); }
+    }, 120000);
   });
 }
 
@@ -150,7 +292,35 @@ function openWompiWidget(params, redirectUrl) {
         return;
       }
 
-      // Refresh normal (sin widget activo)
+      // Fallback: _activePaymentRef fue limpiado por el poller, pero puede haber
+      // refs pendientes en localStorage (ej. usuario vuelve de PSE después del grace period)
+      if (_activePaymentRef && !_resolveWidgetExternally) {
+        try {
+          await confirmAllPendingRefs(window.__lastOrderId);
+          if (window.__lastOrderId && typeof refreshOrderById === 'function') {
+            await refreshOrderById(window.__lastOrderId);
+          }
+        } catch (e) {
+          console.warn('[Capacitor] confirm pending refs on resume failed:', e);
+        }
+        return;
+      }
+
+      const oid = window.__lastOrderId;
+      if (oid) {
+        const pendingRefs = getPendingRefsForOrder(oid);
+        if (pendingRefs.length) {
+          try {
+            await confirmAllPendingRefs(oid);
+            if (typeof refreshOrderById === 'function') await refreshOrderById(oid);
+          } catch (e) {
+            console.warn('[Capacitor] confirm pending refs fallback failed:', e);
+          }
+          return;
+        }
+      }
+
+      // Refresh normal (sin widget activo ni refs pendientes)
       if (window.__lastOrderId && typeof refreshOrderById === 'function') {
         refreshOrderById(window.__lastOrderId);
       }
@@ -166,8 +336,7 @@ function openWompiWidget(params, redirectUrl) {
       }
     });
   }
-  console.info('[Capacitor] Modo nativo activo');
-}
+  if (CapApp) console.info('[Capacitor] Modo nativo activo');
 
 /* -------------------------------------------------
    Confetti CSS auto-inject (por si falta en index)
@@ -446,6 +615,7 @@ const S = {
   list:  $("#screen-list"),
   form:  $("#screen-form"),
   status:$("#screen-status"),
+  history: $("#screen-history"),
 
   services: $("#services"),
   empty:    $("#empty"),
@@ -483,7 +653,7 @@ const S = {
 
 function show(el) {
   hideBanner();
-  [S.list, S.form, S.status].forEach(x => x.classList.add('hidden'));
+  [S.list, S.form, S.status, S.history].forEach(x => x && x.classList.add('hidden'));
   el.classList.remove('hidden');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -665,17 +835,25 @@ function renderHistory() {
   const openBtns = $$('#history-list [data-h-open]');
   openBtns.forEach(btn => {
     btn.onclick = async () => {
-      const st = await api(`orders?id=${encodeURIComponent(btn.dataset.hOpen)}`);
+      const oid = btn.dataset.hOpen;
+      btn.disabled = true;
+      btn.textContent = 'Cargando…';
       try {
-        const items = loadHistory();
-        const h = items.find(x => x.id === btn.dataset.hOpen);
-        if (h && h.contact && !st.contact) st.contact = h.contact;
-      } catch {}
-      // === SINCRONIZA HISTORIAL ===
-      updateHistoryStatus(st.id, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
-      // ============================
-      renderStatus(st);
-      show(S.status);
+        const st = await api(`orders?id=${encodeURIComponent(oid)}`);
+        try {
+          const items = loadHistory();
+          const h = items.find(x => x.id === oid);
+          if (h && h.contact && !st.contact) st.contact = h.contact;
+        } catch {}
+        updateHistoryStatus(st.id, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
+        renderStatus(st);
+        show(S.status);
+      } catch (e) {
+        showBanner('No se pudo cargar el detalle. Intenta de nuevo.', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Ver detalle';
+      }
     };
   });
 }
@@ -783,8 +961,7 @@ async function loadServices() {
           ? String(svc.description)
           : `Entrega aprox: ${svc.sla_hours || 24} h • Canales: ${(svc.deliver_channels||[]).join(', ') || 'email'}`}
       </div>
-      <div class="row" style="margin-top:8px">
-        <div class="price">${pesos((svc.price?.total)||0)}</div>
+      <div class="row" style="margin-top:8px; justify-content:flex-end">
         <button class="btn">Solicitar</button>
       </div>
     `;
@@ -967,49 +1144,78 @@ async function createOrder() {
 
     // === Wompi Widget (pago dentro de la app, sin salir al navegador) ===
     if (payInit?.mode === 'wompi' && payInit.widgetParams) {
-      console.log('[createOrder] Abriendo Wompi Widget');
+      setBtnLoading(S.btnCreate, true, "Cargando pasarela…");
+      await loadWompiWidget();
+
+      const ref = payInit.widgetParams.reference;
+      savePendingPayment(ref, order.id);
+
+      setBtnLoading(S.btnCreate, true, "Pago en curso…");
+
+      let widgetResult = null;
+      let widgetError = null;
       try {
-        setBtnLoading(S.btnCreate, true, "Cargando pasarela…");
-        await loadWompiWidget();
-        setBtnLoading(S.btnCreate, false, "", "Crear orden");
+        widgetResult = await openWompiWidget(payInit.widgetParams, payInit.redirectUrl);
+      } catch (e) {
+        widgetError = e;
+      }
+      clearPendingPayment();
 
-        // Persistir referencia antes de abrir widget (sobrevive force-close / PSE redirect)
-        savePendingPayment(payInit.widgetParams.reference, order.id);
-
-        // Abrir widget con redirectUrl (PSE necesita saber a dónde volver)
-        const result = await openWompiWidget(payInit.widgetParams, payInit.redirectUrl);
-        console.log('[createOrder] Widget result:', result);
-        clearPendingPayment();
-
-        // Widget resuelto — ahora sí desbloquear UI y mostrar status
+      // Si el widget NO devolvió APPROVED → usuario cerró o pago falló
+      const isApproved = widgetResult && ['APPROVED','PAID','SUCCESS'].includes(String(widgetResult.status || '').toUpperCase());
+      if (!isApproved) {
         disableFormInputs(false); lockHeader(false); lockNavigation(false);
-        show(S.status);
+        setBtnLoading(S.btnCreate, false, "", "Crear orden");
+        creating = false;
+        showBanner('Pago cancelado. Puedes intentarlo desde el historial.', 'warn');
+        return;
+      }
 
-        // Confirmar server-side
-        const parts = [];
-        if (result.transactionId) parts.push(`transactionId=${encodeURIComponent(result.transactionId)}`);
-        if (result.reference) parts.push(`reference=${encodeURIComponent(result.reference)}`);
-        if (parts.length) await api(`payments_confirm?${parts.join('&')}`).catch(e => console.warn('[createOrder] confirm error:', e));
+      disableFormInputs(false); lockHeader(false); lockNavigation(false);
+      show(S.status);
+      setBtnLoading(S.btnCreate, true, "Verificando pago…");
+      showBanner('Verificando pago, por favor espera…', 'info', true);
 
-        // Renderizar estado final
+      const txIdFromWidget = widgetResult?.transactionId || null;
+      const DELAYS_C = [500, 500, 1000, 1000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000];
+      for (let i = 0; i < DELAYS_C.length; i++) {
+        try {
+          const parts = [];
+          if (txIdFromWidget) parts.push(`transactionId=${encodeURIComponent(txIdFromWidget)}`);
+          if (ref) parts.push(`reference=${encodeURIComponent(ref)}`);
+          const r = await api(`payments_confirm?${parts.join('&')}`, { silent: true });
+          const s = String(r?.status || r?.payment || '').toLowerCase();
+          if (['paid','rejected','canceled','error'].includes(s)) break;
+        } catch { /* reintentar */ }
+        if (i < DELAYS_C.length - 1) await new Promise(r => setTimeout(r, DELAYS_C[i]));
+      }
+
+      await confirmAllPendingRefs(currentOrder.id);
+
+      hideBanner();
+
+      try {
         const st = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
         renderStatus(st);
         updateHistoryStatus(currentOrder.id, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
-        maybeNotifyPaid(st);
-        if (normalizePayment(st.payment) === 'paid' && normalizeOrderStatus(st.status) !== 'delivered') {
-          pollForDelivery(currentOrder.id);
+        const pnorm = normalizePayment(st.payment);
+        const widgetSaidApproved = widgetResult && ['APPROVED','paid','PAID','SUCCESS'].includes(String(widgetResult.status || ''));
+        if (pnorm === 'paid') {
+          removePendingRefsForOrder(currentOrder.id);
+          maybeNotifyPaid(st);
+          if (normalizeOrderStatus(st.status) !== 'delivered') pollForDelivery(currentOrder.id);
+        } else if (pnorm === 'pending' || widgetSaidApproved) {
+          showBanner('Tu pago aún se está procesando. Verificando automáticamente…', 'warn', true);
+          _startBgPoll(ref, currentOrder.id);
+        } else if (widgetError && pnorm !== 'rejected' && pnorm !== 'canceled') {
+          showBanner(`Error pasarela: ${widgetError?.message || widgetError}. Verificando automáticamente…`, 'error', true);
+          _startBgPoll(ref, currentOrder.id);
         }
-      } catch (e) {
-        console.error('[createOrder] Widget error/dismissed:', e);
-        disableFormInputs(false); lockHeader(false); lockNavigation(false);
-        showBanner(`Error pasarela: ${e?.message || e}`, 'error', true);
-        try {
-          const st = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
-          renderStatus(st);
-          updateHistoryStatus(currentOrder.id, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
-        } catch {}
-        show(S.status);
+      } catch (fe) {
+        showBanner(`No se pudo actualizar. Verificando automáticamente…`, 'error', true);
+        _startBgPoll(ref, currentOrder.id);
       }
+      setBtnLoading(S.btnCreate, false, "", "Crear orden");
       return;
     }
 
@@ -1229,48 +1435,93 @@ function updateHero(order) {
 // ...existing code...
 async function retryPayment(orderId) {
   const btn = document.getElementById('btn-retry-payment');
-  if (btn) { btn.disabled = true; btn.textContent = 'Procesando…'; }
+  const btnRefresh = document.getElementById('btn-refresh-payment');
+  const setBtnState = (disabled, text) => {
+    if (btn) { btn.disabled = disabled; if (text) btn.textContent = text; }
+    if (btnRefresh) btnRefresh.disabled = disabled;
+  };
+
+  setBtnState(true, 'Procesando…');
   try {
     const payInit = await api('payments_init', {
       method: 'POST',
       body: JSON.stringify({ orderId })
     });
 
-    // === Wompi Widget (pago dentro de la app) ===
     if (payInit?.mode === 'wompi' && payInit.widgetParams) {
+      setBtnState(true, 'Cargando pasarela…');
+      await loadWompiWidget();
+
+      const ref = payInit.widgetParams.reference;
+      savePendingPayment(ref, orderId);
+
+      // Mantener botón deshabilitado durante todo el flow del widget
+      setBtnState(true, 'Pago en curso…');
+
+      let widgetResult = null;
+      let widgetError = null;
       try {
-        if (btn) { btn.disabled = true; btn.textContent = 'Cargando pasarela…'; }
-        await loadWompiWidget();
-        if (btn) { btn.disabled = false; btn.textContent = '🔄 Reintentar pago'; }
+        widgetResult = await openWompiWidget(payInit.widgetParams, payInit.redirectUrl);
+      } catch (e) {
+        widgetError = e;
+      }
+      clearPendingPayment();
 
-        savePendingPayment(payInit.widgetParams.reference, orderId);
-        const result = await openWompiWidget(payInit.widgetParams, payInit.redirectUrl);
-        console.log('[retryPayment] Widget result:', result);
-        clearPendingPayment();
+      // Si widget NO devolvió APPROVED → usuario cerró o pago falló
+      const isRetryApproved = widgetResult && ['APPROVED','PAID','SUCCESS'].includes(String(widgetResult.status || '').toUpperCase());
+      if (!isRetryApproved) {
+        setBtnState(false, 'Reintentar pago');
+        showBanner('Pago cancelado. Puedes intentarlo de nuevo.', 'warn');
+        return;
+      }
 
-        // Confirmar server-side
-        const parts = [];
-        if (result.transactionId) parts.push(`transactionId=${encodeURIComponent(result.transactionId)}`);
-        if (result.reference) parts.push(`reference=${encodeURIComponent(result.reference)}`);
-        if (parts.length) await api(`payments_confirm?${parts.join('&')}`).catch(e => console.warn('[retryPayment] confirm error:', e));
+      setBtnState(true, 'Verificando pago…');
+      showBanner('Verificando pago, por favor espera…', 'info', true);
 
+      // Confirm loop: primeros intentos rápidos, luego 2s
+      const txIdFromWidget = widgetResult?.transactionId || null;
+      const DELAYS_R = [500, 500, 1000, 1000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000];
+      for (let i = 0; i < DELAYS_R.length; i++) {
+        try {
+          const parts = [];
+          if (txIdFromWidget) parts.push(`transactionId=${encodeURIComponent(txIdFromWidget)}`);
+          if (ref) parts.push(`reference=${encodeURIComponent(ref)}`);
+          const r = await api(`payments_confirm?${parts.join('&')}`, { silent: true });
+          const s = String(r?.status || r?.payment || '').toLowerCase();
+          if (['paid','rejected','canceled','error'].includes(s)) break;
+        } catch { /* reintentar */ }
+        if (i < DELAYS_R.length - 1) await new Promise(r => setTimeout(r, DELAYS_R[i]));
+      }
+
+      // Fallback: confirmar todas las referencias acumuladas (newest first)
+      await confirmAllPendingRefs(orderId);
+
+      hideBanner();
+
+      try {
         const st = await api(`orders?id=${encodeURIComponent(orderId)}`);
         renderStatus(st);
         updateHistoryStatus(orderId, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
-        maybeNotifyPaid(st);
-        if (normalizePayment(st.payment) === 'paid' && normalizeOrderStatus(st.status) !== 'delivered') {
-          pollForDelivery(orderId);
+        const pnorm = normalizePayment(st.payment);
+        const widgetSaidApproved = widgetResult && ['APPROVED','paid','PAID','SUCCESS'].includes(String(widgetResult.status || ''));
+        if (pnorm === 'paid') {
+          removePendingRefsForOrder(orderId);
+          maybeNotifyPaid(st);
+          if (normalizeOrderStatus(st.status) !== 'delivered') pollForDelivery(orderId);
+        } else if (pnorm === 'pending' || widgetSaidApproved) {
+          showBanner('Tu pago aún se está procesando. Verificando automáticamente…', 'warn', true);
+          // Background poll: confirmar solo la referencia actual cada 10s, máx 5 min
+          _startBgPoll(ref, orderId);
+        } else if (widgetError && pnorm !== 'rejected' && pnorm !== 'canceled') {
+          showBanner(`Error pasarela: ${widgetError?.message || widgetError}. Verificando automáticamente…`, 'error', true);
+          _startBgPoll(ref, orderId);
         }
-      } catch (e) {
-        console.error('[retryPayment] Widget error/dismissed:', e);
-        showBanner(`Error pasarela: ${e?.message || e}`, 'error', true);
-        try {
-          const st = await api(`orders?id=${encodeURIComponent(orderId)}`);
-          renderStatus(st);
-          updateHistoryStatus(orderId, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
-        } catch {}
+      } catch (fe) {
+        showBanner(`No se pudo actualizar. Verificando automáticamente…`, 'error', true);
+        _startBgPoll(ref, orderId);
       }
-      if (btn) { btn.disabled = false; btn.textContent = '🔄 Reintentar pago'; }
+
+      setBtnState(false, '🔄 Reintentar pago');
       return;
     }
 
@@ -1337,6 +1588,7 @@ function renderStatus(order) {
   const odate = document.getElementById('order-date');
   const ts = order.createdAt || Date.now();
   if (odate) odate.textContent = new Date(ts).toLocaleString();
+
 
   // Delivery status
   const sdel = document.getElementById('status-delivery');
@@ -1537,16 +1789,42 @@ function updatePriceUI(ctx) {
   const follow = document.getElementById('followup-card');
   if (follow) follow.style.display = isTerminalOrder(order) ? 'none' : '';
 
-  // Reintentar pago (solo para estados fallidos)
+  // Reintentar pago / actualizar estado — visible para NO-paid (fallidos o pending)
   const retryBlock = document.getElementById('retry-payment-actions');
   if (retryBlock) {
     const pnormR = normalizePayment(order.payment);
     const isFailedPayment = ['rejected', 'canceled', 'error'].includes(pnormR);
-    const isAlreadyPaid   = pnormR === 'paid';
-    retryBlock.style.display = (isFailedPayment && !isAlreadyPaid) ? '' : 'none';
-    if (isFailedPayment) {
+    const isPending = pnormR === 'pending';
+    const showBlock = (isFailedPayment || isPending) && pnormR !== 'paid';
+    retryBlock.style.display = showBlock ? '' : 'none';
+    // Retry visible para fallidos Y pendientes (usuario puede reintentar si cerró widget)
+    const retryBtn = document.getElementById('btn-retry-payment');
+    if (retryBtn) retryBtn.style.display = (isFailedPayment || isPending) ? '' : 'none';
+    const refreshBtn = document.getElementById('btn-refresh-payment');
+    if (refreshBtn) refreshBtn.style.display = showBlock ? '' : 'none';
+    if (showBlock) {
       const btn = document.getElementById('btn-retry-payment');
       if (btn) btn.dataset.orderId = order.id || '';
+      // Auto-check: si hay referencias pendientes para esta orden, intentar confirmar en background
+      if (order.id && !window.__autoCheckInFlight) {
+        const pendingRefs = getPendingRefsForOrder(order.id);
+        if (pendingRefs.length) {
+          window.__autoCheckInFlight = true;
+          (async () => {
+            try {
+              const terminal = await confirmAllPendingRefs(order.id);
+              const s = String(terminal?.status || terminal?.payment || '').toLowerCase();
+              if (s === 'paid') {
+                const st = await api(`orders?id=${encodeURIComponent(order.id)}`);
+                renderStatus(st);
+                updateHistoryStatus(order.id, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
+                removePendingRefsForOrder(order.id);
+                maybeNotifyPaid(st);
+              }
+            } catch {} finally { window.__autoCheckInFlight = false; }
+          })();
+        }
+      }
     }
   }
 
@@ -1665,13 +1943,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   if (S.btnHistory) {
     S.btnHistory.addEventListener('click', () => {
-      show(S.list);
-      document.getElementById('history')?.scrollIntoView({ behavior: 'smooth' });
+      _historyCache = null;
+      renderHistory();
+      show(S.history);
     });
   }
   if (S.btnClearHistory) {
     S.btnClearHistory.addEventListener('click', () => {
       localStorage.removeItem(LS_KEY);
+      _historyCache = null;
       renderHistory();
     });
   }
@@ -1683,6 +1963,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     const oid = btn?.dataset?.orderId || window.__lastOrderId || '';
     if (!oid) { showBanner('No se encontró el ID de la orden.', 'error'); return; }
     retryPayment(oid).catch(e => console.error('[retryPayment] unhandled:', e));
+  });
+
+  document.getElementById('btn-refresh-payment')?.addEventListener('click', async () => {
+    // Cancelar background poll — el usuario tomó control manual
+    _stopBgPoll();
+    const btn = document.getElementById('btn-refresh-payment');
+    const btnRetry = document.getElementById('btn-retry-payment');
+    const oid = btnRetry?.dataset?.orderId || window.__lastOrderId || '';
+    if (!oid) { showBanner('No se encontró el ID de la orden.', 'error'); return; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Verificando…'; }
+    try {
+      await confirmAllPendingRefs(oid);
+      const st = await api(`orders?id=${encodeURIComponent(oid)}`);
+      renderStatus(st);
+      updateHistoryStatus(oid, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
+      const pnorm = normalizePayment(st.payment);
+      if (pnorm === 'paid') {
+        removePendingRefsForOrder(oid);
+        maybeNotifyPaid(st);
+      }
+    } catch (e) {
+      showBanner(`No se pudo actualizar: ${e?.message || e}`, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '🔄 Actualizar estado del pago'; }
+    }
   });
   if (S.btnCreate) {
     S.btnCreate.addEventListener('click', (e) => { e.preventDefault(); createOrder().catch(err => alert(err.message)); });
@@ -1730,11 +2035,12 @@ document.getElementById('bottom-nav')?.addEventListener('click', (e) => {
 
   if (where === 'catalog') {
     show(S.list);
-    document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => window.scrollTo({ top: 0, behavior: 'instant' }), 0);
   }
   if (where === 'history') {
-    show(S.list);
-    document.getElementById('history')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    _historyCache = null;
+    renderHistory();
+    show(S.history);
   }
   if (where === 'about') {
     document.getElementById('about-modal')?.showModal();

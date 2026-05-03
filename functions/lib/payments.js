@@ -245,6 +245,35 @@ exports.payments_confirm = (0, https_1.onRequest)(async (req, res) => {
             if (!snap.exists) {
                 return ok(res, { mode: "wompi", transactionId: tx.id, status: mapped.payment, orderId: derivedOrderId });
             }
+            // Guard: never downgrade a "paid" status to a worse state (e.g. from an old declined reference)
+            const existingPayment = snap.data()?.payment || {};
+            const existingStatus = existingPayment.status;
+            if (existingStatus === "paid" && mapped.payment !== "paid") {
+                console.log("[payments_confirm] guard: skipping downgrade from paid →", mapped.payment, "for order", derivedOrderId);
+                return ok(res, {
+                    mode: "wompi",
+                    orderId: derivedOrderId,
+                    transactionId: existingPayment.txId || tx.id,
+                    status: "paid",
+                });
+            }
+            // Guard: don't let an older reference overwrite a newer one with a non-paid status.
+            // References contain a timestamp: "orderId-<timestamp>-<random>"
+            const existingRef = existingPayment.reference || "";
+            const incomingRef = tx.reference || "";
+            if (mapped.payment !== "paid" && existingRef && incomingRef) {
+                const tsExisting = parseInt(String(existingRef).split("-").slice(-2, -1)[0], 10) || 0;
+                const tsIncoming = parseInt(String(incomingRef).split("-").slice(-2, -1)[0], 10) || 0;
+                if (tsIncoming < tsExisting) {
+                    console.log("[payments_confirm] guard: skipping stale ref", incomingRef, "vs existing", existingRef);
+                    return ok(res, {
+                        mode: "wompi",
+                        orderId: derivedOrderId,
+                        transactionId: existingPayment.txId || tx.id,
+                        status: existingStatus,
+                    });
+                }
+            }
             await orderRef.set({
                 payment: {
                     mode: "wompi",

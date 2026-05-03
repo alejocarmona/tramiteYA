@@ -1,3 +1,7 @@
+param(
+    [switch]$DeployFunctions
+)
+
 $ErrorActionPreference = "Stop"
 $ROOT = $PSScriptRoot
 
@@ -7,9 +11,13 @@ npm run build
 if ($LASTEXITCODE -ne 0) { Set-Location $ROOT; Write-Host "ERROR: functions build failed" -ForegroundColor Red; exit 1 }
 Set-Location $ROOT
 
-Write-Host "=== Step 0.5: Deploy Firebase Functions ===" -ForegroundColor Cyan
-firebase deploy --only functions
-if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: functions deploy failed (continuing build)" -ForegroundColor Yellow }
+if ($DeployFunctions) {
+    Write-Host "=== Step 0.5: Deploy Firebase Functions ===" -ForegroundColor Cyan
+    firebase deploy --only functions
+    if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: functions deploy failed (continuing build)" -ForegroundColor Yellow }
+} else {
+    Write-Host "=== Step 0.5: Skipping functions deploy (use -DeployFunctions to enable) ===" -ForegroundColor DarkGray
+}
 
 Write-Host "=== Step 1: npx cap sync android ===" -ForegroundColor Cyan
 npx cap sync android

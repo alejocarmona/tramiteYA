@@ -611,14 +611,17 @@ dialog#about-modal .muted { color: #64748b; font-size: 12px; }
 
 <main>
 
-  <!-- LISTA -->
+  <!-- LISTA (solo catálogo) -->
   <section id="screen-list" class="card">
     <h1 id="catalog" class="page-title">Catálogo de trámites</h1>
 
     <div class="hr"></div>
     <div id="services" class="grid"></div>
     <div id="empty" class="muted hidden">No hay trámites disponibles.</div>
-    <div class="hr"></div>
+  </section>
+
+  <!-- HISTORIAL (pantalla independiente) -->
+  <section id="screen-history" class="card hidden">
     <div id="history" class="">
       <h1 id="history-title" class="page-title">Mis solicitudes<br><small style="font-size:0.65em;font-weight:400;color:#64748b;">(en este dispositivo)</small></h1>
       <div class="row">
@@ -665,10 +668,8 @@ dialog#about-modal .muted { color: #64748b; font-size: 12px; }
       </div>
 
       <!-- 2) DESGLOSE -->
-      <!-- 2) DESGLOSE -->
       <div class="section-block">
         <div class="form-section-title" >
-          <!--<img src="./img/icon_contacto.svg" alt="" class="section-ico">-->
           <img src="./img/icon_precio.svg" alt="" class="section-ico" style="width:30px; height:auto;">
           Desglose de precios
         </div>
@@ -676,7 +677,6 @@ dialog#about-modal .muted { color: #64748b; font-size: 12px; }
         <div class="section-content">
           <p class="form-section-help" style="margin:4px 0 8px">Este es el valor a pagar.</p><p></p>
 
-          <!-- NUEVO: card con IDs que el JS actualiza en openForm -->
           <div class="card money" id="form-price-box">
             <div class="row money-row"><span>Valor base</span><strong id="form-price-base">—</strong></div>
             <div class="row money-row"><span>IVA</span><strong id="form-price-tax">—</strong></div>
@@ -831,6 +831,7 @@ dialog#about-modal .muted { color: #64748b; font-size: 12px; }
 <!-- Reintentar pago (solo visible cuando pago fallido) -->
 <div id="retry-payment-actions" style="display:none; margin-top:0.75rem;">
   <button id="btn-retry-payment" class="btn primary">🔄 Reintentar pago</button>
+  <button id="btn-refresh-payment" class="btn secondary" style="margin-top:0.5rem">🔄 Actualizar estado del pago</button>
 </div>
 
 <!-- Utilidad para operador -->
@@ -865,7 +866,7 @@ dialog#about-modal .muted { color: #64748b; font-size: 12px; }
 
 </main>
 
-<script defer src="./main.js?v=20"></script>
+<script defer src="./main.js?v=26"></script>
 <script>
   // Registrar Service Worker
   if ('serviceWorker' in navigator) {
