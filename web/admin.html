@@ -9,12 +9,13 @@
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0f172a;color:#e2e8f0;padding:24px}
     .container{max-width:540px;margin:0 auto}
     h1{font-size:1.4rem;margin-bottom:4px}
+    h2{font-size:1rem;margin-bottom:4px}
     .sub{color:#94a3b8;font-size:0.85rem;margin-bottom:24px}
     label{display:block;font-weight:600;margin:16px 0 6px;font-size:0.9rem}
     input,select{width:100%;padding:10px 12px;border:1px solid #334155;border-radius:8px;background:#1e293b;color:#e2e8f0;font-size:0.95rem}
     input:focus{outline:none;border-color:#3b82f6}
     input[type="file"]{padding:8px;cursor:pointer}
-    .btn{display:inline-block;padding:12px 24px;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;width:100%;margin-top:20px;transition:background .2s}
+    .btn{display:inline-block;padding:12px 24px;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;width:100%;margin-top:20px;transition:background .2s;text-align:center;text-decoration:none;color:#fff;box-sizing:border-box}
     .btn-primary{background:#2563eb;color:#fff}
     .btn-primary:hover{background:#1d4ed8}
     .btn-primary:disabled{background:#475569;cursor:not-allowed}
@@ -23,8 +24,6 @@
     .result.err{background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d}
     .result.info{background:#1e293b;color:#93c5fd;border:1px solid #1e40af}
     .hidden{display:none}
-    .secret-row{display:flex;gap:8px;align-items:center}
-    .secret-row input{flex:1}
     .btn-sm{padding:8px 14px;border:none;border-radius:6px;font-size:0.8rem;cursor:pointer;background:#334155;color:#e2e8f0;white-space:nowrap}
     .btn-sm:hover{background:#475569}
     .file-info{margin-top:8px;color:#94a3b8;font-size:0.85rem}
@@ -32,195 +31,248 @@
     details{margin-top:16px}
     summary{cursor:pointer;color:#94a3b8;font-size:0.85rem}
     .help{color:#94a3b8;font-size:0.8rem;margin-top:4px}
+    .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .notify-links{display:flex;gap:8px;margin-top:10px}
+    .notify-links a{flex:1;margin-top:0}
+    .notify-wa{background:#16a34a}
+    .notify-mail{background:#475569}
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>TramiteYA Admin</h1>
-    <p class="sub">Subir certificados a ordenes completadas</p>
 
-    <label for="secret">Secret de admin</label>
-    <div class="secret-row">
-      <input type="password" id="secret" placeholder="Tu uploadSecret de config/admin"/>
-      <button class="btn-sm" id="toggle-secret">Mostrar</button>
-      <button class="btn-sm" id="save-secret">Guardar</button>
+    <!-- LOGIN -->
+    <div id="login-view">
+      <h1>TramiteYA Admin</h1>
+      <p class="sub">Inicia sesión para gestionar órdenes.</p>
+      <label for="login-email">Correo</label>
+      <input type="email" id="login-email" autocomplete="username" placeholder="tu@correo.com"/>
+      <label for="login-password">Contraseña</label>
+      <input type="password" id="login-password" autocomplete="current-password"/>
+      <button class="btn btn-primary" id="btn-login">Iniciar sesión</button>
+      <div id="login-result" class="result hidden"></div>
     </div>
-    <p class="help">Se guarda en este navegador. Lo encuentras en Firestore: config &gt; admin &gt; uploadSecret</p>
 
-    <div class="divider"></div>
-
-    <label for="orderId">ID de la orden</label>
-    <input type="text" id="orderId" placeholder="Ej: j4lLL2USdlDWBHXWsTaG"/>
-
-    <label for="file">Certificado (PDF u otro archivo)</label>
-    <input type="file" id="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"/>
-    <div id="file-info" class="file-info"></div>
-
-    <button class="btn btn-primary" id="btn-upload" disabled>Subir certificado</button>
-
-    <div id="result" class="result hidden"></div>
-
-    <div class="divider"></div>
-
-    <h2 style="font-size:1rem;margin-bottom:4px;">Confirmar pago por WhatsApp</h2>
-    <p class="help" style="margin-bottom:8px;">Usa el mismo ID de orden de arriba para marcar el pago como recibido tras cerrar la venta por WhatsApp.</p>
-    <button class="btn" id="btn-confirm-payment" style="background:#16a34a;color:#fff;" disabled>Marcar pago como recibido</button>
-    <div id="result-confirm" class="result hidden"></div>
-
-    <details>
-      <summary>Ordenes pendientes de entrega</summary>
-      <div id="pending-list" style="margin-top:12px;font-size:0.85rem;color:#94a3b8;">
-        Cargando...
+    <!-- PANEL ADMIN (solo visible autenticado) -->
+    <div id="admin-view" class="hidden">
+      <div class="topbar">
+        <div>
+          <h1>TramiteYA Admin</h1>
+          <p class="sub" id="session-email" style="margin-bottom:0"></p>
+        </div>
+        <button class="btn-sm" id="btn-logout">Cerrar sesión</button>
       </div>
-    </details>
+
+      <label for="orderId">ID de la orden</label>
+      <input type="text" id="orderId" placeholder="Ej: j4lLL2USdlDWBHXWsTaG"/>
+
+      <label for="file">Certificado (PDF u otro archivo)</label>
+      <input type="file" id="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"/>
+      <div id="file-info" class="file-info"></div>
+
+      <button class="btn btn-primary" id="btn-upload" disabled>Subir certificado</button>
+
+      <div id="result" class="result hidden"></div>
+      <div id="notify-links" class="notify-links hidden">
+        <a id="notify-wa" class="btn notify-wa" target="_blank" rel="noopener">📲 Avisar por WhatsApp</a>
+        <a id="notify-mail" class="btn notify-mail">✉️ Avisar por correo</a>
+      </div>
+
+      <div class="divider"></div>
+
+      <h2>Confirmar pago por WhatsApp</h2>
+      <p class="help" style="margin-bottom:8px;">Usa el mismo ID de orden de arriba para marcar el pago como recibido tras cerrar la venta por WhatsApp.</p>
+      <button class="btn" id="btn-confirm-payment" style="background:#16a34a;" disabled>Marcar pago como recibido</button>
+      <div id="result-confirm" class="result hidden"></div>
+    </div>
   </div>
 
-<script>
-const LS_KEY = 'tya_admin_secret';
-const $secret = document.getElementById('secret');
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
+  <script defer>
+const FIREBASE_CONFIG = {
+  projectId: "apptramiteya",
+  appId: "1:116926764904:web:8358c14f77e060f3bee8dd",
+  storageBucket: "apptramiteya.firebasestorage.app",
+  apiKey: "AIzaSyDJS9PNalG129bOCyiWdu17XytFUQ29htU",
+  authDomain: "apptramiteya.firebaseapp.com",
+  messagingSenderId: "116926764904",
+};
+if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+const auth = firebase.auth();
+const db = firebase.firestore();
+const storage = firebase.storage();
+
+const $loginView = document.getElementById('login-view');
+const $adminView = document.getElementById('admin-view');
+const $loginEmail = document.getElementById('login-email');
+const $loginPassword = document.getElementById('login-password');
+const $btnLogin = document.getElementById('btn-login');
+const $loginResult = document.getElementById('login-result');
+const $sessionEmail = document.getElementById('session-email');
+
+function showLoginResult(text, type) {
+  $loginResult.textContent = text;
+  $loginResult.className = `result ${type}`;
+}
+
+$btnLogin.onclick = async () => {
+  $btnLogin.disabled = true;
+  $btnLogin.textContent = 'Entrando…';
+  $loginResult.className = 'result hidden';
+  try {
+    await auth.signInWithEmailAndPassword($loginEmail.value.trim(), $loginPassword.value);
+  } catch (e) {
+    showLoginResult(`No se pudo iniciar sesión: ${e.message}`, 'err');
+  } finally {
+    $btnLogin.disabled = false;
+    $btnLogin.textContent = 'Iniciar sesión';
+  }
+};
+
+document.getElementById('btn-logout').onclick = () => auth.signOut();
+
+auth.onAuthStateChanged((user) => {
+  if (user) {
+    $loginView.classList.add('hidden');
+    $adminView.classList.remove('hidden');
+    $sessionEmail.textContent = user.email;
+  } else {
+    $adminView.classList.add('hidden');
+    $loginView.classList.remove('hidden');
+    $loginPassword.value = '';
+  }
+});
+
+// --- Panel admin ---
 const $orderId = document.getElementById('orderId');
 const $file = document.getElementById('file');
 const $fileInfo = document.getElementById('file-info');
 const $btn = document.getElementById('btn-upload');
 const $result = document.getElementById('result');
-const $pendingList = document.getElementById('pending-list');
+const $notifyLinks = document.getElementById('notify-links');
+const $notifyWa = document.getElementById('notify-wa');
+const $notifyMail = document.getElementById('notify-mail');
 
-// --- Secret management ---
-$secret.value = localStorage.getItem(LS_KEY) || '';
-
-document.getElementById('save-secret').onclick = () => {
-  localStorage.setItem(LS_KEY, $secret.value.trim());
-  showResult('Secret guardado en este navegador.', 'info');
-};
-
-document.getElementById('toggle-secret').onclick = (e) => {
-  const isPass = $secret.type === 'password';
-  $secret.type = isPass ? 'text' : 'password';
-  e.target.textContent = isPass ? 'Ocultar' : 'Mostrar';
-};
-
-// --- File selection ---
-let fileBase64 = null;
-let fileName = null;
-let contentType = null;
+let selectedFile = null;
 
 $file.onchange = () => {
-  const f = $file.files[0];
-  if (!f) { fileBase64 = null; updateBtn(); return; }
-  fileName = f.name;
-  contentType = f.type || 'application/pdf';
-  $fileInfo.textContent = `${f.name} (${(f.size / 1024).toFixed(1)} KB)`;
-
-  const reader = new FileReader();
-  reader.onload = () => {
-    fileBase64 = reader.result.split(',')[1]; // quitar "data:...;base64,"
-    updateBtn();
-  };
-  reader.readAsDataURL(f);
+  selectedFile = $file.files[0] || null;
+  $fileInfo.textContent = selectedFile ? `${selectedFile.name} (${(selectedFile.size / 1024).toFixed(1)} KB)` : '';
+  updateBtn();
 };
-
-$orderId.oninput = updateBtn;
-$secret.oninput = updateBtn;
+$orderId.oninput = () => { updateBtn(); updateConfirmBtn(); };
 
 function updateBtn() {
-  $btn.disabled = !($secret.value.trim() && $orderId.value.trim() && fileBase64);
+  $btn.disabled = !($orderId.value.trim() && selectedFile);
 }
-
-// --- Upload ---
-$btn.onclick = async () => {
-  $btn.disabled = true;
-  $btn.textContent = 'Subiendo...';
-  $result.className = 'result hidden';
-
-  try {
-    const resp = await fetch('/admin_upload', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${$secret.value.trim()}`
-      },
-      body: JSON.stringify({
-        orderId: $orderId.value.trim(),
-        fileBase64,
-        fileName,
-        contentType
-      })
-    });
-
-    const data = await resp.json();
-
-    if (!resp.ok) {
-      showResult(`Error ${resp.status}: ${data.error || 'Error desconocido'}`, 'err');
-      return;
-    }
-
-    showResult(
-      `Certificado subido exitosamente.\n` +
-      `Orden: ${data.orderId}\n` +
-      `URL: ${data.fileUrl}`,
-      'ok'
-    );
-
-    // Limpiar form
-    $orderId.value = '';
-    $file.value = '';
-    $fileInfo.textContent = '';
-    fileBase64 = null;
-    updateBtn();
-
-    // Refresh pending list
-    loadPendingOrders();
-
-  } catch (e) {
-    showResult(`Error de red: ${e.message}`, 'err');
-  } finally {
-    $btn.textContent = 'Subir certificado';
-    updateBtn();
-  }
-};
 
 function showResult(text, type) {
   $result.textContent = text;
   $result.className = `result ${type}`;
 }
 
+function normalizePhone(raw) {
+  const digits = String(raw || '').replace(/\D/g, '');
+  return digits.startsWith('57') ? digits : `57${digits}`;
+}
+
+$btn.onclick = async () => {
+  const orderId = $orderId.value.trim();
+  $btn.disabled = true;
+  $btn.textContent = 'Subiendo...';
+  $result.className = 'result hidden';
+  $notifyLinks.classList.add('hidden');
+
+  try {
+    const orderRef = db.collection('orders').doc(orderId);
+    const orderSnap = await orderRef.get();
+    if (!orderSnap.exists) throw new Error('Orden no encontrada');
+    const order = orderSnap.data();
+
+    const safeName = (selectedFile.name || 'certificado.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
+    const path = `certificates/${orderId}/${safeName}`;
+    const fileRef = storage.ref(path);
+    await fileRef.put(selectedFile, { contentType: selectedFile.type || 'application/pdf' });
+    const fileUrl = await fileRef.getDownloadURL();
+
+    const now = new Date().toISOString();
+    await orderRef.set({
+      status: 'delivered',
+      delivery: { channel: 'download', fileUrl },
+      audit: { ...(order.audit || {}), updated_at: now, actor: 'operator' },
+    }, { merge: true });
+
+    showResult(`Certificado subido exitosamente.\nOrden: ${orderId}\nURL: ${fileUrl}`, 'ok');
+
+    // Notificación al cliente: sin Cloud Functions no hay envío automático de correo,
+    // se deja el enlace listo para que el operador lo envíe por WhatsApp o correo.
+    const phone = order.contact?.phone;
+    const email = order.contact?.email;
+    const waMsg = `Hola, tu certificado de TrámiteYA ya está listo.\nOrden: ${orderId}\nDescárgalo aquí: ${fileUrl}`;
+    if (phone) {
+      $notifyWa.href = `https://wa.me/${normalizePhone(phone)}?${new URLSearchParams({ text: waMsg })}`;
+      $notifyWa.classList.remove('hidden');
+    } else {
+      $notifyWa.classList.add('hidden');
+    }
+    if (email) {
+      const subject = encodeURIComponent(`Tu certificado de TrámiteYA - Orden ${orderId}`);
+      const body = encodeURIComponent(`Hola,\n\nAquí tienes tu certificado:\n${fileUrl}\n\nGracias por usar TrámiteYA.`);
+      $notifyMail.href = `mailto:${email}?subject=${subject}&body=${body}`;
+      $notifyMail.classList.remove('hidden');
+    } else {
+      $notifyMail.classList.add('hidden');
+    }
+    $notifyLinks.classList.remove('hidden');
+
+    $orderId.value = '';
+    $file.value = '';
+    $fileInfo.textContent = '';
+    selectedFile = null;
+    updateBtn();
+    updateConfirmBtn();
+
+  } catch (e) {
+    showResult(`Error: ${e.message}`, 'err');
+  } finally {
+    $btn.textContent = 'Subir certificado';
+    updateBtn();
+  }
+};
+
 // --- Confirmar pago (WhatsApp) ---
 const $btnConfirm = document.getElementById('btn-confirm-payment');
 const $resultConfirm = document.getElementById('result-confirm');
 
 function updateConfirmBtn() {
-  $btnConfirm.disabled = !($secret.value.trim() && $orderId.value.trim());
+  $btnConfirm.disabled = !$orderId.value.trim();
 }
-$orderId.addEventListener('input', updateConfirmBtn);
-$secret.addEventListener('input', updateConfirmBtn);
 
 $btnConfirm.onclick = async () => {
+  const orderId = $orderId.value.trim();
   $btnConfirm.disabled = true;
   $btnConfirm.textContent = 'Confirmando...';
   $resultConfirm.className = 'result hidden';
 
   try {
-    const resp = await fetch('/admin_confirm_payment', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${$secret.value.trim()}`
-      },
-      body: JSON.stringify({ orderId: $orderId.value.trim() })
-    });
+    const orderRef = db.collection('orders').doc(orderId);
+    const orderSnap = await orderRef.get();
+    if (!orderSnap.exists) throw new Error('Orden no encontrada');
+    const order = orderSnap.data();
 
-    const data = await resp.json();
+    const now = new Date().toISOString();
+    await orderRef.set({
+      payment: { mode: 'whatsapp', status: 'paid', updatedAt: now },
+      audit: { ...(order.audit || {}), updated_at: now, actor: 'operator' },
+    }, { merge: true });
 
-    if (!resp.ok) {
-      $resultConfirm.textContent = `Error ${resp.status}: ${data.error || 'Error desconocido'}`;
-      $resultConfirm.className = 'result err';
-      return;
-    }
-
-    $resultConfirm.textContent = `Pago confirmado para la orden ${data.orderId}.`;
+    $resultConfirm.textContent = `Pago confirmado para la orden ${orderId}.`;
     $resultConfirm.className = 'result ok';
   } catch (e) {
-    $resultConfirm.textContent = `Error de red: ${e.message}`;
+    $resultConfirm.textContent = `Error: ${e.message}`;
     $resultConfirm.className = 'result err';
   } finally {
     $btnConfirm.textContent = 'Marcar pago como recibido';
@@ -228,21 +280,9 @@ $btnConfirm.onclick = async () => {
   }
 };
 
-// --- Pending orders ---
-async function loadPendingOrders() {
-  try {
-    // Usar el secret para autenticar una consulta simple
-    // Por ahora, consultamos ordenes desde el endpoint público (solo ids, sin datos sensibles)
-    $pendingList.textContent = 'Esta sección estará disponible próximamente.';
-  } catch {
-    $pendingList.textContent = 'Error cargando ordenes.';
-  }
-}
-loadPendingOrders();
-
 // Init
 updateBtn();
 updateConfirmBtn();
-</script>
+  </script>
 </body>
 </html>

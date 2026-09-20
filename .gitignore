@@ -35,8 +35,8 @@ firebase-debug.log
 firestore-debug.log
 ui-debug.log
 
-# Sharp (dev dependency artifact)
-scripts/
+# Sharp (dev dependency artifact) — solo la carpeta raíz, no functions/scripts/
+/scripts/
 
 # Logs
 *.log

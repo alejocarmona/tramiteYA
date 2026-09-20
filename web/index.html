@@ -714,25 +714,6 @@ dialog#about-modal .muted { color: #64748b; font-size: 12px; }
       <button id="btn-create" class="btn block">Crear orden</button>
     </div>
 
-    <!-- Simulador de pago -->
-    <div id="pay-sim" class="hidden">
-      <div class="hr"></div>
-      <div class="paybox card">
-        <details id="simulator">
-          <summary style="font-weight:700; cursor:pointer;">🧪 Simulador de pago (sólo emulador)</summary>
-          <div class="muted" style="margin:8px 0;">
-            Estás saliendo de TrámiteYA, simulando Wompi. Selecciona un resultado:
-          </div>
-          <div class="row" style="gap:12px; flex-wrap:wrap;">
-            <button class="btn" data-sim="success" style="background:#16a34a">✅ Pago exitoso</button>
-            <button class="btn" data-sim="insufficient" style="background:#f59e0b">⚠️ Saldo insuficiente</button>
-            <button class="btn" data-sim="canceled" style="background:#475569">❌ Cancelado por usuario</button>
-            <button class="btn" data-sim="error" style="background:#dc2626">❌ Error técnico</button>
-          </div>
-        </details>
-      </div>
-    </div>
-
     <!-- Checkout asistido por WhatsApp -->
     <div id="pay-wa" class="hidden">
       <div class="hr"></div>
@@ -881,7 +862,9 @@ dialog#about-modal .muted { color: #64748b; font-size: 12px; }
 
 </main>
 
-<script defer src="./main.js?v=26"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script defer src="./main.js?v=27"></script>
 <script>
   // Registrar Service Worker
   if ('serviceWorker' in navigator) {

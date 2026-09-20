@@ -2,27 +2,52 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email == 'the.piece.maker@gmail.com';
+    }
+
     // Lectura pública SOLO del doc config/public
     match /config/{docId} {
       allow read: if docId == "public";
       allow write: if false;
     }
-    // Catálogo visible públicamente (solo lectura)
+
+    // Catálogo visible públicamente (solo lectura). Escritura: solo admin (panel).
     match /services/{serviceId} {
       allow read: if true;
-      allow write: if false; // Solo por Admin SDK (Functions)
+      allow write: if isAdmin();
     }
 
-    // Órdenes: no se exponen directamente en MVP (lee y escribe el backend)
+    // Órdenes: se crean desde el cliente (checkout WhatsApp), se consultan por id
+    // (get = doc conocido, no enumerable), y solo el admin las lista/actualiza.
     match /orders/{orderId} {
-      allow read: if false;
-      allow write: if false;
-    }
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create: if isValidOrderCreate();
+      allow update: if isAdmin();
+      allow delete: if false;
 
-    // Flags globales (solo backend)
-    match /flags/{flagId} {
-      allow read: if false;
-      allow write: if false;
+      function isValidOrderCreate() {
+        let d = request.resource.data;
+        return d.service_id is string && d.service_id.size() > 0
+          && d.contact is map
+          && d.contact.email is string && d.contact.email.size() > 0
+          && d.contact.phone is string && d.contact.phone.size() > 0
+          && d.form_data is map
+          && d.status == 'queued'
+          && d.payment is map
+          && d.payment.mode == 'whatsapp'
+          && d.payment.status == 'pending'
+          && d.delivery is map
+          && d.delivery.channel == null
+          && d.delivery.fileUrl == null
+          && d.price_breakdown is map
+          && d.price_breakdown.total is number
+          // Integridad de precio: debe coincidir con el catálogo, el cliente no puede alterarlo.
+          && d.price_breakdown.total == get(/databases/$(database)/documents/services/$(d.service_id)).data.price.total
+          && d.audit is map
+          && d.audit.actor == 'user';
+      }
     }
   }
 }

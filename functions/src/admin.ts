@@ -146,7 +146,7 @@ export const admin_upload = onRequest(async (req: Request, res: Response) => {
 /**
  * POST /admin_confirm_payment
  * Marca una orden como pagada manualmente (venta cerrada por un asesor vía WhatsApp).
- * Reutiliza el mismo trigger onOrderPaymentPaid que el flujo Wompi.
+ * Reutiliza el trigger onOrderPaymentPaid existente.
  *
  * Headers:  Authorization: Bearer <uploadSecret>
  * Body:     { orderId }

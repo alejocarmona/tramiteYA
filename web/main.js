@@ -25,318 +25,33 @@ if (IS_CAPACITOR) {
   } catch (e) { console.warn('Capacitor plugins init:', e); }
 }
 
-/* --------------------------------------------------
-   Wompi Widget: lazy loader + wrapper
--------------------------------------------------- */
-let _wompiReady = false, _wompiLoading = null;
-function loadWompiWidget() {
-  if (_wompiReady) return Promise.resolve();
-  if (_wompiLoading) return _wompiLoading;
-  _wompiLoading = new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = 'https://checkout.wompi.co/widget.js';
-    s.onload = () => { _wompiReady = true; resolve(); };
-    s.onerror = () => { _wompiLoading = null; reject(new Error('Wompi widget.js failed to load')); };
-    document.head.appendChild(s);
+if (CapApp) {
+  // Back button hardware (complementa el handler nativo en MainActivity.java)
+  CapApp.addListener('backButton', () => {
+    const onList = S.list && !S.list.classList.contains('hidden');
+    if (onList) {
+      CapApp.minimizeApp();
+    } else {
+      cleanOrderUrl();
+      show(S.list);
+    }
   });
-  return _wompiLoading;
+  console.info('[Capacitor] Modo nativo activo');
 }
 
-// Referencia activa del pago en curso (para resolver desde appStateChange)
-let _activePaymentRef = null;
-let _resolveWidgetExternally = null;
-let _bgPollTimer = null; // Background poll tras retry fallido
-
-function _stopBgPoll() {
-  if (_bgPollTimer) { clearInterval(_bgPollTimer); _bgPollTimer = null; }
-}
-
-// Background poll: confirma solo la referencia actual cada 10s, máx 5 min.
-// Para en cualquier estado terminal o si el usuario navega a otra orden.
-function _startBgPoll(ref, orderId) {
-  _stopBgPoll();
-  const started = Date.now();
-  const MAX_DURATION = 5 * 60 * 1000; // 5 minutos
-  _bgPollTimer = setInterval(async () => {
-    // Parar si el usuario cambió de orden o superó el máximo
-    if (window.__lastOrderId !== orderId || Date.now() - started > MAX_DURATION) {
-      _stopBgPoll();
-      return;
-    }
-    try {
-      const r = await api(`payments_confirm?reference=${encodeURIComponent(ref)}`, { silent: true });
-      const s = String(r?.status || r?.payment || '').toLowerCase();
-      if (['paid', 'rejected', 'canceled', 'error'].includes(s)) {
-        _stopBgPoll();
-        // Refrescar la vista con el estado definitivo
-        const st = await api(`orders?id=${encodeURIComponent(orderId)}`, { silent: true });
-        if (st && window.__lastOrderId === orderId) {
-          renderStatus(st);
-          updateHistoryStatus(orderId, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
-          const pnorm = normalizePayment(st.payment);
-          if (pnorm === 'paid') {
-            removePendingRefsForOrder(orderId);
-            hideBanner();
-            maybeNotifyPaid(st);
-            if (normalizeOrderStatus(st.status) !== 'delivered') pollForDelivery(orderId);
-          } else {
-            hideBanner();
-          }
-        }
-      }
-    } catch { /* silenciar — se reintenta en el siguiente tick */ }
-  }, 10000);
-}
-
-// Persistencia de pago activo en localStorage (sobrevive force-close)
-const LS_PENDING_PAY = 'tya_pending_payment';
-const LS_PENDING_REFS = 'tya_pending_refs'; // mapa orderId → array de referencias pendientes
-function savePendingPayment(ref, orderId) {
-  try {
-    localStorage.setItem(LS_PENDING_PAY, JSON.stringify({ reference: ref, orderId, ts: Date.now() }));
-    // Guardar también en el mapa multi-reference
-    const map = loadAllPendingRefs();
-    if (!map[orderId]) map[orderId] = [];
-    map[orderId].push({ ref, ts: Date.now() });
-    // Limpiar viejos (>1h)
-    const cutoff = Date.now() - 60 * 60 * 1000;
-    Object.keys(map).forEach(k => {
-      map[k] = map[k].filter(x => x.ts > cutoff);
-      if (!map[k].length) delete map[k];
-    });
-    localStorage.setItem(LS_PENDING_REFS, JSON.stringify(map));
-  } catch {}
-}
-function clearPendingPayment() {
-  try { localStorage.removeItem(LS_PENDING_PAY); } catch {}
-}
-function loadPendingPayment() {
-  try {
-    const raw = localStorage.getItem(LS_PENDING_PAY);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    if (Date.now() - (data.ts || 0) > 30 * 60 * 1000) { clearPendingPayment(); return null; }
-    return data;
-  } catch { return null; }
-}
-function loadAllPendingRefs() {
-  try { return JSON.parse(localStorage.getItem(LS_PENDING_REFS) || '{}'); }
-  catch { return {}; }
-}
-function getPendingRefsForOrder(orderId) {
-  const map = loadAllPendingRefs();
-  return (map[orderId] || []).map(x => x.ref);
-}
-function removePendingRefsForOrder(orderId) {
-  try {
-    const map = loadAllPendingRefs();
-    delete map[orderId];
-    localStorage.setItem(LS_PENDING_REFS, JSON.stringify(map));
-  } catch {}
-}
-
-// Confirma server-side todas las referencias pendientes de una orden hasta obtener estado terminal.
-// Itera del más reciente al más antiguo — los retries más nuevos tienen prioridad.
-// Si la ref más nueva aún no existe en Wompi (404), NO cae a refs viejas para evitar
-// que una tx declinada anterior sobreescriba el estado en Firestore.
-async function confirmAllPendingRefs(orderId) {
-  const refs = [...getPendingRefsForOrder(orderId)].reverse();
-  if (!refs.length) return null;
-  let terminal = null;
-  for (const ref of refs) {
-    try {
-      const r = await api(`payments_confirm?reference=${encodeURIComponent(ref)}`, { silent: true });
-      const s = String(r?.status || r?.payment || '').toLowerCase();
-      if (s === 'paid') { terminal = r; break; }
-      if (['rejected','canceled','error'].includes(s)) { terminal = terminal || r; }
-    } catch {
-      // 404 o error de red: la tx puede no estar indexada aún en Wompi.
-      // NO seguir con refs más antiguas — confirmarlas escribiría datos obsoletos a Firestore.
-      break;
-    }
-  }
-  return terminal;
-}
-
-// Intenta confirmar un pago con reintentos para cubrir delay de Wompi registrando la tx.
-// Acepta cualquier terminal state (paid/rejected/canceled/error) como final — solo reintenta si está pending o falló.
-async function confirmPaymentWithRetry(reference, transactionId = null, attempts = 5, delayMs = 2000) {
-  for (let i = 0; i < attempts; i++) {
-    try {
-      const parts = [];
-      if (transactionId) parts.push(`transactionId=${encodeURIComponent(transactionId)}`);
-      if (reference) parts.push(`reference=${encodeURIComponent(reference)}`);
-      if (!parts.length) return null;
-      const r = await api(`payments_confirm?${parts.join('&')}`, { silent: true });
-      const s = String(r?.status || r?.payment || '').toLowerCase();
-      console.log(`[confirmPaymentWithRetry] intento ${i+1}/${attempts}:`, r, 'status=', s);
-      // Estados terminales: no reintentar
-      if (['paid', 'rejected', 'canceled', 'error'].includes(s)) return r;
-      if (i < attempts - 1) await new Promise(res => setTimeout(res, delayMs));
-    } catch (e) {
-      console.warn(`[confirmPaymentWithRetry] intento ${i+1} falló:`, e?.message || e);
-      if (i < attempts - 1) await new Promise(res => setTimeout(res, delayMs));
-    }
-  }
-  return null;
-}
-
-function openWompiWidget(params, redirectUrl) {
-  _activePaymentRef = params.reference;
-  return new Promise((resolve, reject) => {
-    const widgetOpts = {
-      currency:              params.currency,
-      amountInCents:         params.amountInCents,
-      reference:             params.reference,
-      publicKey:             params.publicKey,
-      'signature:integrity': params.signature,
-    };
-    if (redirectUrl) widgetOpts.redirectUrl = redirectUrl;
-    const checkout = new WidgetCheckout(widgetOpts);
-
-    let done = false;
-    let graceTimer = null;
-
-    // Bloquear toques en todo el contenido excepto el widget de Wompi.
-    // Evita que Android WebView despache touch events al contenido subyacente.
-    function blockPageTouch() {
-      document.querySelectorAll('body > *:not(.waybox-modal)').forEach(el => { el.style.pointerEvents = 'none'; });
-    }
-    function restorePageTouch() {
-      document.querySelectorAll('body > *').forEach(el => { el.style.pointerEvents = ''; });
-    }
-
-    // Full cleanup: clear everything (used on successful resolution)
-    function finishFull() { clearInterval(poll); clearTimeout(timer); clearTimeout(graceTimer); _activePaymentRef = null; _resolveWidgetExternally = null; restorePageTouch(); }
-    // Partial cleanup: clear timers but preserve _activePaymentRef for Capacitor appStateChange (used on poller rejection)
-    function finishPartial() { clearInterval(poll); clearTimeout(timer); clearTimeout(graceTimer); _resolveWidgetExternally = null; restorePageTouch(); }
-
-    // Permitir resolver desde fuera (cuando la app vuelve del navegador PSE)
-    _resolveWidgetExternally = (result) => {
-      if (done) return;
-      done = true;
-      finishFull();
-      resolve(result);
-    };
-
-    checkout.open(function (result) {
-      if (done) return;
-      done = true;
-      finishFull();
-      resolve({
-        transactionId: result.transaction.id,
-        status:        result.transaction.status,
-        reference:     result.transaction.reference,
-      });
-    });
-
-    // Bloquear toques en el resto de la página mientras Wompi esté abierto
-    blockPageTouch();
-
-    // Detectar cierre del widget (Wompi NO dispara callback al cerrar con X).
-    // El modal puede quedarse en DOM pero oculto (hidden attr, display:none, clase de cierre).
-    let widgetAppeared = false;
-    const poll = setInterval(() => {
-      if (done) { clearInterval(poll); return; }
-      const modal = document.querySelector('.waybox-modal');
-      const frame = modal || document.querySelector('iframe[src*="wompi"]');
-      // Determinar si el widget está realmente visible
-      const isVisible = frame && !frame.hidden
-        && (!modal || (getComputedStyle(modal).display !== 'none'
-            && !modal.classList.contains('waybox-modal-final-close')));
-      if (isVisible) {
-        widgetAppeared = true;
-      } else if (widgetAppeared && !graceTimer) {
-        // Widget desapareció o fue ocultado — grace period corto
-        graceTimer = setTimeout(() => {
-          if (!done) {
-            done = true;
-            finishPartial();
-            reject(new Error('Widget cerrado sin completar pago'));
-          }
-        }, 1500);
-      }
-    }, 300);
-
-    // Timeout de seguridad: 2 minutos (suficiente para PSE)
-    const timer = setTimeout(() => {
-      if (!done) { done = true; finishPartial(); reject(new Error('Widget timeout')); }
-    }, 120000);
-  });
-}
-
-  if (CapApp) {
-    // Escuchar cuando la app vuelve al frente (por si el usuario completa pago en Widget)
-    CapApp.addListener('appStateChange', async (state) => {
-      if (!state.isActive) return;
-      console.log('[Capacitor] app resumed, activePaymentRef:', _activePaymentRef, 'lastOrderId:', window.__lastOrderId);
-
-      // Si hay un pago de widget pendiente (usuario volvió del navegador PSE)
-      if (_activePaymentRef && _resolveWidgetExternally) {
-        try {
-          const confirmResult = await api(`payments_confirm?reference=${encodeURIComponent(_activePaymentRef)}`);
-          console.log('[Capacitor] confirm on resume:', confirmResult);
-          _resolveWidgetExternally({
-            transactionId: confirmResult?.transactionId || null,
-            status:        confirmResult?.payment || 'pending',
-            reference:     _activePaymentRef,
-          });
-        } catch (e) {
-          console.warn('[Capacitor] confirm on resume failed:', e);
-          _resolveWidgetExternally({
-            transactionId: null,
-            status:        'pending',
-            reference:     _activePaymentRef,
-          });
-        }
-        return;
-      }
-
-      // Fallback: _activePaymentRef fue limpiado por el poller, pero puede haber
-      // refs pendientes en localStorage (ej. usuario vuelve de PSE después del grace period)
-      if (_activePaymentRef && !_resolveWidgetExternally) {
-        try {
-          await confirmAllPendingRefs(window.__lastOrderId);
-          if (window.__lastOrderId && typeof refreshOrderById === 'function') {
-            await refreshOrderById(window.__lastOrderId);
-          }
-        } catch (e) {
-          console.warn('[Capacitor] confirm pending refs on resume failed:', e);
-        }
-        return;
-      }
-
-      const oid = window.__lastOrderId;
-      if (oid) {
-        const pendingRefs = getPendingRefsForOrder(oid);
-        if (pendingRefs.length) {
-          try {
-            await confirmAllPendingRefs(oid);
-            if (typeof refreshOrderById === 'function') await refreshOrderById(oid);
-          } catch (e) {
-            console.warn('[Capacitor] confirm pending refs fallback failed:', e);
-          }
-          return;
-        }
-      }
-
-      // Refresh normal (sin widget activo ni refs pendientes)
-      if (window.__lastOrderId && typeof refreshOrderById === 'function') {
-        refreshOrderById(window.__lastOrderId);
-      }
-    });
-    // Back button hardware (complementa el handler nativo en MainActivity.java)
-    CapApp.addListener('backButton', () => {
-      const onList = S.list && !S.list.classList.contains('hidden');
-      if (onList) {
-        CapApp.minimizeApp();
-      } else {
-        cleanOrderUrl();
-        show(S.list);
-      }
-    });
-  }
-  if (CapApp) console.info('[Capacitor] Modo nativo activo');
+/* -------------------------------------------------
+   Firebase (Firestore directo desde el cliente — sin Cloud Functions)
+--------------------------------------------------*/
+const FIREBASE_CONFIG = {
+  projectId: "apptramiteya",
+  appId: "1:116926764904:web:8358c14f77e060f3bee8dd",
+  storageBucket: "apptramiteya.firebasestorage.app",
+  apiKey: "AIzaSyDJS9PNalG129bOCyiWdu17XytFUQ29htU",
+  authDomain: "apptramiteya.firebaseapp.com",
+  messagingSenderId: "116926764904",
+};
+if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+const db = firebase.firestore();
 
 /* -------------------------------------------------
    Confetti CSS auto-inject (por si falta en index)
@@ -353,57 +68,6 @@ function openWompiWidget(params, redirectUrl) {
   style.textContent = css;
   document.head.appendChild(style);
 })();
-
-// ...existing code...
-const NOTIFY_WEBHOOK = "https://hooks.zapier.com/hooks/catch/25211343/ui7n435/";
-
-// Puedes conservar NOTIFY_WEBHOOK para pruebas manuales, pero usa el endpoint del backend:
-async function notifyTeam(payload) {
-  const appBase = location.origin + location.pathname;
-  const appLink = `${appBase}?open=${encodeURIComponent(payload.orderId || '')}`;
-  const body = {
-    app: { env: (new URLSearchParams(location.search).get('env') || 'prod') },
-    appLink,
-    ...payload
-  };
-
-  // Misma-origen → no hay CORS ni preflight
-  await fetch('/notify', {
-    method: 'POST',
-    headers: { 'Content-Type':'application/json' },
-    body: JSON.stringify(body)
-  });
-}
-// ...existing code...
-
-// NUEVO: notifica una sola vez si pago aprobado y estado encolado/entregado
-function maybeNotifyPaid(order) {
-  try {
-    if (!order || !order.id) return;
-    const KEY = "tya_mail_paid_notified";
-    const seen = new Set(JSON.parse(localStorage.getItem(KEY) || "[]"));
-    if (seen.has(order.id)) return;
-
-    const pay = normalizePayment(order.payment);         // 'paid'|'pending'|'rejected'...
-    const st  = (typeof normalizeOrderStatus === 'function')
-      ? normalizeOrderStatus(order.status)
-      : String(order.status || '').toLowerCase();
-
-    if (pay === 'paid' && (st === 'queued' || st === 'delivered')) {
-      notifyTeam({
-        type: "order_paid",
-        orderId: order.id,
-        serviceName: order.serviceName || "",
-        contact: order.contact || {},
-        price: order.price || order.price_breakdown || {}
-      }).catch(e=>console.warn('[notifyTeam]', e));
-      seen.add(order.id);
-      localStorage.setItem(KEY, JSON.stringify([...seen].slice(0,100)));
-    }
-  } catch (e) {
-    console.warn('[maybeNotifyPaid]', e);
-  }
-}
 
 // Limpia los query params de orden de la URL (para que refresh no vuelva al comprobante)
 function cleanOrderUrl() {
@@ -435,9 +99,6 @@ function pollForDelivery(orderId) {
     }
   }, 30000);
 }
-// ...existing code...
-
-
 
 /* =====================
    Config & Init
@@ -447,11 +108,8 @@ let APP_CONFIG = { whatsappNumber: "" };
 
 async function loadConfig() {
   try {
-    const PROJECT_ID = 'apptramiteya';
-    const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/config/public`;
-    const res = await fetch(url);
-    const data = await res.json();
-    APP_CONFIG.whatsappNumber = data?.fields?.whatsappNumber?.stringValue || '';
+    const doc = await db.collection('config').doc('public').get();
+    APP_CONFIG.whatsappNumber = (doc.exists && doc.get('whatsappNumber')) || '';
     console.log('[config]', APP_CONFIG);
   } catch (e) {
     console.warn('[config] no se pudo cargar:', e);
@@ -472,8 +130,6 @@ function hasWhatsAppNumber() {
   return !!(APP_CONFIG.whatsappNumber && String(APP_CONFIG.whatsappNumber).trim());
 }
 
-
-
 function mapPayment(payment) {
   if (!payment) return '⏳ Aún no procesado';
 
@@ -485,9 +141,6 @@ function mapPayment(payment) {
     if (p === 'rejected' || p === 'declined')return '❌ Pago rechazado';
     if (p === 'canceled' || p === 'voided')  return '❌ Pago cancelado';
     if (p === 'error')                       return '❌ Error en el pago';
-    // Wompi en mayúsculas
-    if (payment === 'APPROVED' || payment === 'SUCCESS') return '✅ Pago aprobado';
-    if (payment === 'DECLINED')                            return '❌ Pago rechazado';
     return payment; // fallback
   }
 
@@ -533,21 +186,20 @@ function buildWAOrderMessage(order) {
   return parts.join(" ");
 }
 
-// Mensaje de checkout WhatsApp: usa el resumen calculado en el backend (payments_init),
-// evita reenviar form_data/cédula por la URL del enlace.
-function buildCheckoutWAMessage(payInit) {
-  const p = payInit?.waPayload || {};
+// Mensaje de checkout WhatsApp: orden ya persistida en Firestore, solo se referencia
+// por id — evita reenviar form_data/cédula por la URL del enlace.
+function buildCheckoutWAMessage({ orderId, serviceName, total } = {}) {
   const parts = [
     'Hola, quiero completar el pago de mi pedido en TrámiteYA.',
-    p.orderId ? `Orden: ${p.orderId}` : '',
-    p.serviceName ? `Trámite: ${p.serviceName}` : '',
-    (p.total !== undefined && p.total !== null && p.total > 0) ? `Total a pagar: ${pesos(p.total)}` : ''
+    orderId ? `Orden: ${orderId}` : '',
+    serviceName ? `Trámite: ${serviceName}` : '',
+    (total !== undefined && total !== null && total > 0) ? `Total a pagar: ${pesos(total)}` : ''
   ].filter(Boolean);
   return parts.join('\n');
 }
 
-function showWhatsAppCheckout(payInit) {
-  const link = buildWhatsAppLink(buildCheckoutWAMessage(payInit));
+function showWhatsAppCheckout(summary) {
+  const link = buildWhatsAppLink(buildCheckoutWAMessage(summary));
   const panel = document.getElementById('pay-wa');
   const cta = document.getElementById('pay-wa-link');
   if (cta) { cta.href = link; cta.target = '_blank'; cta.rel = 'noopener'; }
@@ -570,67 +222,6 @@ function setFabWhatsApp(orderOrNull) {
     window.open(buildWhatsAppLink(msg), '_blank');
   };
 }
-
-/* =====================
-   Config (Functions base URL)
-===================== */
-// ...existing code...
-// ...existing code...
-function functionUrl(name) {
-  const qp  = new URLSearchParams(location.search);
-  const rawEnv = qp.get('env');
-  const ENV = (rawEnv && rawEnv !== 'undefined' && rawEnv !== 'null') ? rawEnv : null;
-
-  // Helper: normaliza base (quita / finales y elimina /us-central1 cuando no es emulador)
-  const normalizeBase = (base, isEmu) => {
-    let out = String(base || '').replace(/\/+$/,'');
-    if (!isEmu) out = out.replace(/\/us-central1$/i, ''); // ← clave
-    return out;
-  };
-
-  // Override manual
-  if (window.__API_BASE) {
-    const base = normalizeBase(window.__API_BASE, false);
-    console.info('API base (override):', base);
-    return `${base}/${name}`;
-  }
-
-  // Capacitor: siempre apunta a Firebase Hosting en producción
-  if (IS_CAPACITOR) {
-    const base = 'https://apptramiteya.web.app';
-    console.info('API base (capacitor):', base);
-    return `${base}/${name}`;
-  }
-
-  // Same-origin en Hosting (incluye túneles de dev como cloudflared/ngrok)
-  // HTTPS siempre indica túnel o producción → usar rewrites del hosting
-  const isHosting = (location.port === '5000') ||
-    location.protocol === 'https:' ||
-    location.hostname.endsWith('.web.app') ||
-    location.hostname.endsWith('.firebaseapp.com') ||
-    location.hostname.endsWith('.trycloudflare.com') ||
-    location.hostname.endsWith('.ngrok-free.dev') ||
-    location.hostname.endsWith('.ngrok-free.app');
-  if (!ENV && isHosting) {
-    console.info('API base: (hosting rewrite)');
-    return `/${name}`;
-  }
-
-  // Emulador o prod explícito
-  let base;
-  if (ENV === 'emulator') {
-    base = normalizeBase(`http://${location.hostname}:5001/apptramiteya/us-central1`, true);
-  } else if (ENV === 'prod') {
-    base = normalizeBase('https://us-central1-apptramiteya.cloudfunctions.net', false);
-  } else {
-    base = normalizeBase(`http://${location.hostname}:5001/apptramiteya/us-central1`, true);
-  }
-  const url = `${base}/${name}`;
-  console.info('API url:', url);
-  return url;
-}
-// ...existing code...
-// ...existing code...
 
 /* =====================
    Helpers DOM & Currency
@@ -664,9 +255,6 @@ const S = {
 
   priceBox: $("#price-box"),
   priceBreakdown: $("#price-breakdown"),
-
-  // simulador de pago
-  paySim: $("#pay-sim"),
 
   // estado
   statusDelivery: $("#status-delivery"),
@@ -715,30 +303,101 @@ function isDebug() {
 }
 
 /* =====================
-   API Wrapper
+   API Wrapper — Firestore directo (sin Cloud Functions)
 ===================== */
-async function api(path, opts = {}) {
-  const url = functionUrl(path);
-  const res = await fetch(url, {
-    method: opts.method || 'GET',
-    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
-    body: opts.body
-  });
-  const text = await res.text();
+function fbOrderToApiShape(id, d) {
+  d = d || {};
+  const paymentStatus = d?.payment?.status ?? (typeof d?.payment === 'string' ? d.payment : 'pending');
+  const paymentMode = d?.payment?.mode ?? null;
+  return {
+    id,
+    serviceId: d.service_id ?? null,
+    serviceName: d.serviceName ?? null,
+    contact: d.contact ?? null,
+    form_data: d.form_data ?? {},
+    price_breakdown: d.price_breakdown ?? null,
+    status: d.status ?? 'queued',
+    payment: (typeof d?.payment === 'object') ? d.payment : paymentStatus,
+    paymentMode,
+    delivery: d.delivery ?? { channel: null, fileUrl: null },
+    audit: d.audit ?? null,
+  };
+}
 
-  if (!res.ok) {
-    if (res.status === 404 && opts.ignore404) {
-      return null; // ← tratar como “no hay datos”
+async function fbCreateOrder({ service_id, contact, form_data }) {
+  if (!service_id) { const e = new Error('service_id is required'); e.status = 400; throw e; }
+  if (!contact?.email || !contact?.phone) { const e = new Error('contact.email and contact.phone are required'); e.status = 400; throw e; }
+
+  const svcDoc = await db.collection('services').doc(String(service_id)).get();
+  if (!svcDoc.exists) { const e = new Error('Service not found'); e.status = 404; throw e; }
+  const svc = svcDoc.data() || {};
+  const price = svc.price || { base: 0, fee: 0, iva: 0, total: 0 };
+
+  const now = new Date().toISOString();
+  const contactNorm = {
+    email: String(contact.email || ''),
+    phone: String(contact.phone || ''),
+    ...(contact.name ? { name: String(contact.name) } : {}),
+  };
+
+  const ref = db.collection('orders').doc();
+  const order = {
+    id: ref.id,
+    service_id: String(service_id),
+    serviceName: svc.name || String(service_id),
+    contact: contactNorm,
+    form_data: form_data || {},
+    price_breakdown: price,
+    status: 'queued',
+    payment: { mode: 'whatsapp', status: 'pending' },
+    delivery: { channel: null, fileUrl: null },
+    audit: { created_at: now, updated_at: now, actor: 'user' },
+  };
+
+  await ref.set(order);
+  return { id: ref.id };
+}
+
+async function api(path, opts = {}) {
+  const method = String(opts.method || 'GET').toUpperCase();
+  const [route, qs] = String(path).split('?');
+  const params = new URLSearchParams(qs || '');
+
+  try {
+    if (route === 'services' && method === 'GET') {
+      if (params.get('id')) {
+        const doc = await db.collection('services').doc(params.get('id')).get();
+        if (!doc.exists) { const e = new Error('Service not found'); e.status = 404; throw e; }
+        return { item: { id: doc.id, ...doc.data() } };
+      }
+      const snap = await db.collection('services').where('enabled', '==', true).get();
+      return { items: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
     }
-    console.error('API error', { url, status: res.status, text });
-    // Mensaje amigable: nunca mostrar errores técnicos al usuario
-    const friendly = res.status === 404 ? 'Servicio no disponible momentáneamente.'
-      : res.status >= 500 ? 'Error en el servidor. Intenta de nuevo en unos segundos.'
+
+    if (route === 'orders' && method === 'POST') {
+      return await fbCreateOrder(JSON.parse(opts.body || '{}'));
+    }
+
+    if (route === 'orders' && method === 'GET') {
+      const id = params.get('id');
+      const doc = await db.collection('orders').doc(id).get();
+      if (!doc.exists) {
+        if (opts.ignore404) return null;
+        const e = new Error('Order not found'); e.status = 404; throw e;
+      }
+      return fbOrderToApiShape(doc.id, doc.data());
+    }
+
+    throw new Error(`Ruta no soportada: ${path}`);
+  } catch (e) {
+    if (e?.status === 404 && opts.ignore404) return null;
+    console.error('API error', { path, error: e });
+    const friendly = e?.status === 404 ? 'Servicio no disponible momentáneamente.'
+      : e?.code === 'permission-denied' ? 'No tienes permiso para esta acción.'
       : 'Ocurrió un error al procesar tu solicitud.';
     if (!opts.silent) showBanner(friendly, 'error', true);
-    throw new Error(text || `HTTP ${res.status}`);
+    throw e;
   }
-  return text ? JSON.parse(text) : {};
 }
 
 function showBanner(message, type = 'error', persist = false) {
@@ -830,7 +489,7 @@ function renderHistory() {
       </div>
       <div class="h-foot">
         <div class="muted">Pago: ${mapPayment(o.payment)}</div>
-        <div class="muted">Estado: ${mapOrderStatus(o.status)}</div> 
+        <div class="muted">Estado: ${mapOrderStatus(o.status)}</div>
       </div>
       <div class="row" style="margin-top:8px">
         <button class="btn ghost" data-h-reload="${o.id}">Revisar estado</button>
@@ -979,7 +638,6 @@ async function loadServices() {
   data.items.forEach(svc=>{
     const card = document.createElement('div');
     card.className = 'card';
-    // ...existing code...
     card.innerHTML = `
       <div class="title">${svc.name}</div>
       <div class="muted">
@@ -1033,9 +691,8 @@ async function openForm(id) {
   currentService = svc;
   window.__CURRENT_SERVICE = svc; // ← agregado: disponible para updatePriceUI
 
-  
+
   S.svcHead.innerHTML = `<div class="title">${svc.name}</div>`;
-  // ...existing code...
   const price = svc.price || { base:0, iva:0, fee:0, total:0 };
   const fpb   = document.getElementById('form-price-base');
   const fpt   = document.getElementById('form-price-tax');
@@ -1046,7 +703,6 @@ async function openForm(id) {
   if (fpt)   fpt.textContent   = pesos((price.iva ?? price.tax) || 0);
   if (fpf)   fpf.textContent   = pesos(price.fee  || 0);
   if (fptot) fptot.textContent = pesos(price.total|| 0);
-  // ...existing code...
 
   (svc.fields || []).forEach(f => {
     const wrap = document.createElement('div');
@@ -1076,7 +732,6 @@ async function openForm(id) {
   if (c.email) form.querySelector('[name="contact_email"]').value = c.email;
   if (c.phone) form.querySelector('[name="contact_phone"]').value = c.phone;
 
-  S.paySim.classList.add('hidden');
   currentOrder = null;
 
   lockHeader(false); lockNavigation(false); disableFormInputs(false);
@@ -1132,20 +787,13 @@ async function createOrder() {
   }
 
   try {
-    console.log('[createOrder] POST /orders…');
+    console.log('[createOrder] creando orden en Firestore…');
     const order = await api('orders', {
       method:'POST',
-      body: JSON.stringify({
-        service_id: currentService.id,
-        contact,
-        form_data: data,
-        status: 'queued',
-        payment: 'pending',
-        delivery: { channel: null, fileUrl: null }
-      })
+      body: JSON.stringify({ service_id: currentService.id, contact, form_data: data })
     });
 
-    console.log('[createOrder] /orders OK', order);
+    console.log('[createOrder] orden creada', order);
     currentOrder = order;
     window.__lastOrderId = order.id;
 
@@ -1160,134 +808,15 @@ async function createOrder() {
       delivery: { channel: null, fileUrl: null }
     });
 
-    setBtnLoading(S.btnCreate, true, "Procesando pago…");
-    console.log('[createOrder] POST /payments_init…');
-    const payInit = await api('payments_init', {
-      method:'POST',
-      body: JSON.stringify({ orderId: order.id })
-    });
-    console.log('[createOrder] /payments_init OK', JSON.stringify(payInit));
-
-    // === Wompi Widget (pago dentro de la app, sin salir al navegador) ===
-    if (payInit?.mode === 'wompi' && payInit.widgetParams) {
-      setBtnLoading(S.btnCreate, true, "Cargando pasarela…");
-      await loadWompiWidget();
-
-      const ref = payInit.widgetParams.reference;
-      savePendingPayment(ref, order.id);
-
-      setBtnLoading(S.btnCreate, true, "Pago en curso…");
-
-      let widgetResult = null;
-      let widgetError = null;
-      try {
-        widgetResult = await openWompiWidget(payInit.widgetParams, payInit.redirectUrl);
-      } catch (e) {
-        widgetError = e;
-      }
-      clearPendingPayment();
-
-      // Si el widget NO devolvió APPROVED → usuario cerró o pago falló
-      const isApproved = widgetResult && ['APPROVED','PAID','SUCCESS'].includes(String(widgetResult.status || '').toUpperCase());
-      if (!isApproved) {
-        disableFormInputs(false); lockHeader(false); lockNavigation(false);
-        setBtnLoading(S.btnCreate, false, "", "Crear orden");
-        creating = false;
-        showBanner('Pago cancelado. Puedes intentarlo desde el historial.', 'warn');
-        return;
-      }
-
-      disableFormInputs(false); lockHeader(false); lockNavigation(false);
-      show(S.status);
-      setBtnLoading(S.btnCreate, true, "Verificando pago…");
-      showBanner('Verificando pago, por favor espera…', 'info', true);
-
-      const txIdFromWidget = widgetResult?.transactionId || null;
-      const DELAYS_C = [500, 500, 1000, 1000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000];
-      for (let i = 0; i < DELAYS_C.length; i++) {
-        try {
-          const parts = [];
-          if (txIdFromWidget) parts.push(`transactionId=${encodeURIComponent(txIdFromWidget)}`);
-          if (ref) parts.push(`reference=${encodeURIComponent(ref)}`);
-          const r = await api(`payments_confirm?${parts.join('&')}`, { silent: true });
-          const s = String(r?.status || r?.payment || '').toLowerCase();
-          if (['paid','rejected','canceled','error'].includes(s)) break;
-        } catch { /* reintentar */ }
-        if (i < DELAYS_C.length - 1) await new Promise(r => setTimeout(r, DELAYS_C[i]));
-      }
-
-      await confirmAllPendingRefs(currentOrder.id);
-
-      hideBanner();
-
-      try {
-        const st = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
-        renderStatus(st);
-        updateHistoryStatus(currentOrder.id, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
-        const pnorm = normalizePayment(st.payment);
-        const widgetSaidApproved = widgetResult && ['APPROVED','paid','PAID','SUCCESS'].includes(String(widgetResult.status || ''));
-        if (pnorm === 'paid') {
-          removePendingRefsForOrder(currentOrder.id);
-          maybeNotifyPaid(st);
-          if (normalizeOrderStatus(st.status) !== 'delivered') pollForDelivery(currentOrder.id);
-        } else if (pnorm === 'pending' || widgetSaidApproved) {
-          showBanner('Tu pago aún se está procesando. Verificando automáticamente…', 'warn', true);
-          _startBgPoll(ref, currentOrder.id);
-        } else if (widgetError && pnorm !== 'rejected' && pnorm !== 'canceled') {
-          showBanner(`Error pasarela: ${widgetError?.message || widgetError}. Verificando automáticamente…`, 'error', true);
-          _startBgPoll(ref, currentOrder.id);
-        }
-      } catch (fe) {
-        showBanner(`No se pudo actualizar. Verificando automáticamente…`, 'error', true);
-        _startBgPoll(ref, currentOrder.id);
-      }
-      setBtnLoading(S.btnCreate, false, "", "Crear orden");
-      return;
-    }
-
-if (payInit?.mode === 'whatsapp') {
-  disableFormInputs(false);
-  lockHeader(false);
-  lockNavigation(false);
-  setBtnLoading(S.btnCreate, false, "", "Crear orden");
-  showWhatsAppCheckout(payInit);
-  return;
-}
-
-if (payInit?.mode === 'mock') {
-  // Mostrar simulador de pago en modo mock
-  if (S.paySim) {
-    S.paySim.classList.remove('hidden');
-    S.paySim.style.display = 'block';
-    const det = document.getElementById('simulator');
-    if (det) det.open = true;
-    // Scroll para que el usuario vea el simulador
-    setTimeout(() => S.paySim.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-  }
-  // Solo alertar si la config realmente falta (no si mock es intencional)
-  if (payInit.reason === 'config_missing') {
-    showBanner('Configuración de pagos no encontrada. Contacta al administrador.', 'error');
-  }
-  disableFormInputs(false);
-  lockHeader(false);
-  lockNavigation(false);
-  setBtnLoading(S.btnCreate, false, "Creando…", "Crear orden");
-  return;
-}
-// ...existing code...
-
-    // Llegados aquí (mock no debug, o cualquier otro caso),
-    // consultamos el estado y pintamos (dispara confeti si ya está "paid")
-    const status = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
-    renderStatus(status);
-    //nuevo para las notificaciones
-// Reemplazo: notificar si aplica usando helper (dedup por localStorage)
-  maybeNotifyPaid(status);
-
-    //fin codigo nuew para notificaciones
     disableFormInputs(false); lockHeader(false); lockNavigation(false);
     setBtnLoading(S.btnCreate, false, "", "Crear orden");
-    show(S.status);
+
+    // Único método de pago: checkout asistido por WhatsApp.
+    showWhatsAppCheckout({
+      orderId: order.id,
+      serviceName: currentService.name,
+      total: currentService.price?.total,
+    });
     return;
 
   } catch (e) {
@@ -1296,30 +825,6 @@ if (payInit?.mode === 'mock') {
     setBtnLoading(S.btnCreate, false, "", "Crear orden");
   } finally {
     creating = false;
-  }
-}
-
-/* =====================
-   Simulador (mock)
-===================== */
-async function confirmPayment(scenario) {
-  if (!currentOrder?.id) return;
-  try {
-    await api('payments_confirm', {
-      method:'POST',
-      body: JSON.stringify({ orderId: currentOrder.id, scenario })
-    });
-    const status = await api(`orders?id=${encodeURIComponent(currentOrder.id)}`);
-    renderStatus(status);
-    updateHistoryStatus(currentOrder.id, { status: status.status, payment: status.payment, delivery: status.delivery ?? null });
-
-    S.paySim.classList.add('hidden');
-    setBtnLoading(S.btnCreate, false, "Crear orden");
-    disableFormInputs(false); lockHeader(false); lockNavigation(false);
-
-    show(S.status);
-  } catch (e) {
-    showBanner(e?.message || 'No pudimos confirmar el pago en este momento.', 'error');
   }
 }
 
@@ -1367,60 +872,50 @@ function triggerConfetti(orderId) {
     console.warn('[confetti] Error:', e);
   }
 }
-// ...existing code...
-function normalizePayment(p){
-  if (!p) return 'pending';
-  if (typeof p === 'string') return p;
-  switch (String(p.status).toLowerCase()){
-    case 'success':      return 'paid';
-    case 'paid':         return 'paid';        // ← Wompi
-    case 'approved':     return 'paid';        // ← por si acaso
-    case 'insufficient': return 'rejected';
-    case 'rejected':     return 'rejected';    // ← Wompi
-    case 'declined':     return 'rejected';    // ← sinónimo
-    case 'canceled':     return 'canceled';
-    case 'voided':       return 'canceled';    // ← sinónimo
-    case 'error':        return 'error';
-    case 'APPROVED':     return 'paid';         // ← Wompi
-    case 'DECLINED':     return 'rejected';        // ← Wompi
-    case 'SUCCESS':      return 'paid';        // ← Wompi
-    default:             return 'pending';
-  }
-}
-// ...existing code...
 window.__confettiTest = function(){
   const id = 'TEST-'+Date.now();
   triggerConfetti(id);
   return id;
 };
 
+function normalizePayment(p){
+  if (!p) return 'pending';
+  if (typeof p === 'string') return p;
+  switch (String(p.status).toLowerCase()){
+    case 'success':      return 'paid';
+    case 'paid':         return 'paid';
+    case 'approved':     return 'paid';
+    case 'insufficient': return 'rejected';
+    case 'rejected':     return 'rejected';
+    case 'declined':     return 'rejected';
+    case 'canceled':     return 'canceled';
+    case 'voided':       return 'canceled';
+    case 'error':        return 'error';
+    default:             return 'pending';
+  }
+}
+
 /* =====================
    Payment state + Hero
 ===================== */
-// ...existing code...
 function paymentState(order) {
   const p = order?.payment;
   if (!p) return 'pending';
   if (typeof p === 'string') return p;
   switch (String(p.status).toLowerCase()) {
     case 'success':      return 'paid';
-    case 'paid':         return 'paid';        // ← Wompi
-    case 'approved':     return 'paid';        // ← por si acaso
+    case 'paid':         return 'paid';
+    case 'approved':     return 'paid';
     case 'insufficient': return 'rejected';
-    case 'rejected':     return 'rejected';    // ← Wompi
-    case 'declined':     return 'rejected';    // ← sinónimo
+    case 'rejected':     return 'rejected';
+    case 'declined':     return 'rejected';
     case 'canceled':     return 'canceled';
-    case 'voided':       return 'canceled';    // ← sinónimo
+    case 'voided':       return 'canceled';
     case 'error':        return 'error';
-    case 'APPROVED':     return 'paid';         // ← Wompi
-    case 'DECLINED':     return 'rejected';        // ← Wompi
-    case 'SUCCESS':      return 'paid';        // ← Wompi
     default:             return 'pending';
   }
 }
-// ...existing code...
 
-// ...existing code...
 function updateHero(order) {
   const hero = document.getElementById('status-hero');
   if (!hero) return;
@@ -1432,11 +927,8 @@ function updateHero(order) {
 
   hero.classList.remove('is-success', 'is-error', 'is-pending');
 
-
-
-  
   const p = paymentState(order);
-  if (p === 'paid' || p=== 'APPROVED') {
+  if (p === 'paid') {
     hero.classList.add('is-success');
     if (heroIcon)  heroIcon.textContent  = '✅';
     if (heroTitle) heroTitle.textContent = '¡Pago aprobado!';
@@ -1444,16 +936,13 @@ function updateHero(order) {
   } else if (p === 'rejected' || p === 'canceled' || p === 'error') {
     hero.classList.add('is-error');
     if (heroIcon)  heroIcon.textContent  = '❌';
-    if (heroTitle) heroTitle.textContent = 'Pago rechazado';
-    if (heroSub)   heroSub.textContent   = 'No pudimos procesar el pago. Puedes reintentarlo más tarde o elegir otro método.';
+    if (heroTitle) heroTitle.textContent = 'Pago no confirmado';
+    if (heroSub)   heroSub.textContent   = 'No pudimos confirmar tu pago. Puedes escribirnos por WhatsApp para resolverlo.';
   } else {
     hero.classList.add('is-pending');
-    const isWA = (typeof order?.payment === 'object') && order.payment?.mode === 'whatsapp';
-    if (heroIcon)  heroIcon.textContent  = isWA ? '📲' : '⏳';
-    if (heroTitle) heroTitle.textContent = isWA ? 'Pago pendiente por WhatsApp' : 'Pago pendiente';
-    if (heroSub)   heroSub.textContent   = isWA
-      ? 'Completa tu pago por WhatsApp con nuestro asesor. Te confirmaremos aquí cuando quede registrado.'
-      : 'Tu pago está pendiente. Si cerraste esta ventana, puedes reintentarlo desde tu historial.';
+    if (heroIcon)  heroIcon.textContent  = '📲';
+    if (heroTitle) heroTitle.textContent = 'Pago pendiente por WhatsApp';
+    if (heroSub)   heroSub.textContent   = 'Completa tu pago por WhatsApp con nuestro asesor. Te confirmaremos aquí cuando quede registrado.';
   }
 
   // Mejora: usar audit.created_at si existe
@@ -1465,12 +954,10 @@ function updateHero(order) {
   );
   if (heroDate) heroDate.textContent = d.toLocaleString('es-CO');
 }
-// ...existing code...
 
 /* =====================
-   Render Status (dispara confeti)
+   Reintentar checkout (reabrir WhatsApp)
 ===================== */
-// ...existing code...
 async function retryPayment(orderId) {
   const btn = document.getElementById('btn-retry-payment');
   const btnRefresh = document.getElementById('btn-refresh-payment');
@@ -1479,109 +966,19 @@ async function retryPayment(orderId) {
     if (btnRefresh) btnRefresh.disabled = disabled;
   };
 
-  setBtnState(true, 'Procesando…');
+  setBtnState(true, 'Abriendo WhatsApp…');
   try {
-    const payInit = await api('payments_init', {
-      method: 'POST',
-      body: JSON.stringify({ orderId })
+    const order = await api(`orders?id=${encodeURIComponent(orderId)}`);
+    showWhatsAppCheckout({
+      orderId,
+      serviceName: order.serviceName,
+      total: order.price_breakdown?.total,
     });
-
-    if (payInit?.mode === 'wompi' && payInit.widgetParams) {
-      setBtnState(true, 'Cargando pasarela…');
-      await loadWompiWidget();
-
-      const ref = payInit.widgetParams.reference;
-      savePendingPayment(ref, orderId);
-
-      // Mantener botón deshabilitado durante todo el flow del widget
-      setBtnState(true, 'Pago en curso…');
-
-      let widgetResult = null;
-      let widgetError = null;
-      try {
-        widgetResult = await openWompiWidget(payInit.widgetParams, payInit.redirectUrl);
-      } catch (e) {
-        widgetError = e;
-      }
-      clearPendingPayment();
-
-      // Si widget NO devolvió APPROVED → usuario cerró o pago falló
-      const isRetryApproved = widgetResult && ['APPROVED','PAID','SUCCESS'].includes(String(widgetResult.status || '').toUpperCase());
-      if (!isRetryApproved) {
-        setBtnState(false, 'Reintentar pago');
-        showBanner('Pago cancelado. Puedes intentarlo de nuevo.', 'warn');
-        return;
-      }
-
-      setBtnState(true, 'Verificando pago…');
-      showBanner('Verificando pago, por favor espera…', 'info', true);
-
-      // Confirm loop: primeros intentos rápidos, luego 2s
-      const txIdFromWidget = widgetResult?.transactionId || null;
-      const DELAYS_R = [500, 500, 1000, 1000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000];
-      for (let i = 0; i < DELAYS_R.length; i++) {
-        try {
-          const parts = [];
-          if (txIdFromWidget) parts.push(`transactionId=${encodeURIComponent(txIdFromWidget)}`);
-          if (ref) parts.push(`reference=${encodeURIComponent(ref)}`);
-          const r = await api(`payments_confirm?${parts.join('&')}`, { silent: true });
-          const s = String(r?.status || r?.payment || '').toLowerCase();
-          if (['paid','rejected','canceled','error'].includes(s)) break;
-        } catch { /* reintentar */ }
-        if (i < DELAYS_R.length - 1) await new Promise(r => setTimeout(r, DELAYS_R[i]));
-      }
-
-      // Fallback: confirmar todas las referencias acumuladas (newest first)
-      await confirmAllPendingRefs(orderId);
-
-      hideBanner();
-
-      try {
-        const st = await api(`orders?id=${encodeURIComponent(orderId)}`);
-        renderStatus(st);
-        updateHistoryStatus(orderId, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
-        const pnorm = normalizePayment(st.payment);
-        const widgetSaidApproved = widgetResult && ['APPROVED','paid','PAID','SUCCESS'].includes(String(widgetResult.status || ''));
-        if (pnorm === 'paid') {
-          removePendingRefsForOrder(orderId);
-          maybeNotifyPaid(st);
-          if (normalizeOrderStatus(st.status) !== 'delivered') pollForDelivery(orderId);
-        } else if (pnorm === 'pending' || widgetSaidApproved) {
-          showBanner('Tu pago aún se está procesando. Verificando automáticamente…', 'warn', true);
-          // Background poll: confirmar solo la referencia actual cada 10s, máx 5 min
-          _startBgPoll(ref, orderId);
-        } else if (widgetError && pnorm !== 'rejected' && pnorm !== 'canceled') {
-          showBanner(`Error pasarela: ${widgetError?.message || widgetError}. Verificando automáticamente…`, 'error', true);
-          _startBgPoll(ref, orderId);
-        }
-      } catch (fe) {
-        showBanner(`No se pudo actualizar. Verificando automáticamente…`, 'error', true);
-        _startBgPoll(ref, orderId);
-      }
-
-      setBtnState(false, '🔄 Reintentar pago');
-      return;
-    }
-
-    if (payInit?.mode === 'whatsapp') {
-      setBtnState(false, '📲 Continuar por WhatsApp');
-      showBanner('Te llevamos a WhatsApp para continuar el pago con un asesor.', 'info');
-      showWhatsAppCheckout(payInit);
-      return;
-    }
-
-    if (payInit?.mode === 'mock') {
-      showBanner('Modo simulado activo. Usa el simulador de pago para confirmar.', 'info');
-      if (btn) { btn.disabled = false; btn.textContent = '🔄 Reintentar pago'; }
-      return;
-    }
-
-    showBanner('No se pudo iniciar el pago. Intenta más tarde.', 'error');
-    if (btn) { btn.disabled = false; btn.textContent = '🔄 Reintentar pago'; }
+    setBtnState(false, '📲 Continuar por WhatsApp');
   } catch (e) {
     console.error('[retryPayment] error:', e);
-    showBanner(e?.message || 'No se pudo reintentar el pago.', 'error', true);
-    if (btn) { btn.disabled = false; btn.textContent = '🔄 Reintentar pago'; }
+    showBanner(e?.message || 'No se pudo abrir WhatsApp.', 'error', true);
+    setBtnState(false, '📲 Continuar por WhatsApp');
   }
 }
 
@@ -1589,18 +986,14 @@ function renderStatus(order) {
   // Actualiza hero dinámico (antes de calcular badge para consistencia)
   updateHero(order);
 
-  
   // Badge
   const badge = document.getElementById('badge-status');
- 
-// ...existing code...
-// ...existing code...
   let badgeClass = 'pill warn', badgeText = 'Pago pendiente';
   if (
     order.payment === 'paid' ||
     order.payment?.status === 'success' ||
     order.payment?.status === 'paid' ||
-    String(order.payment?.status || '').toLowerCase() === 'approved' // <-- agregado
+    String(order.payment?.status || '').toLowerCase() === 'approved'
   ) {
     badgeClass = 'pill success'; badgeText = 'Pago aprobado';
   } else if (
@@ -1617,9 +1010,6 @@ function renderStatus(order) {
     badgeClass = 'pill warn'; badgeText = 'Pago pendiente';
   }
   if (badge) { badge.className = badgeClass; badge.textContent = badgeText; }
-// ...existing code...
-// ...existing code...
-
 
   // Order ID
   const oid = document.getElementById('order-id');
@@ -1633,7 +1023,6 @@ function renderStatus(order) {
   const odate = document.getElementById('order-date');
   const ts = order.createdAt || Date.now();
   if (odate) odate.textContent = new Date(ts).toLocaleString();
-
 
   // Delivery status
   const sdel = document.getElementById('status-delivery');
@@ -1666,9 +1055,7 @@ function renderStatus(order) {
     if (ptotal) ptotal.textContent = '—';
   }
 
-  // CAMBIO: no pasar el objeto order “crudo”; usar el contexto esperado
-  updatePriceUI({ order });   // antes: updatePriceUI(order)
-
+  updatePriceUI({ order });
 
   // Friendly message
   const msg = document.getElementById('friendly-message');
@@ -1676,9 +1063,9 @@ function renderStatus(order) {
   if (badgeClass === 'pill success') {
     friendly = 'Tu pago fue aprobado ✅. En breve pondremos tu solicitud en cola y te avisaremos por correo/WhatsApp cuando esté lista.';
   } else if (badgeClass === 'pill warn') {
-    friendly = 'Tu pago está pendiente ⏳. Si cerraste esta ventana, puedes reintentarlo desde tu historial.';
+    friendly = 'Tu pago está pendiente ⏳. Complétalo por WhatsApp con nuestro asesor.';
   } else if (badgeClass === 'pill error') {
-    friendly = 'No pudimos procesar el pago ❌. Puedes reintentarlo más tarde o regresar yelegir otro método.';
+    friendly = 'No pudimos confirmar el pago ❌. Escríbenos por WhatsApp para resolverlo.';
   }
   if (msg) msg.textContent = friendly;
 
@@ -1702,96 +1089,88 @@ function renderStatus(order) {
     }
   }
 
-
   //Detalle de cobro con valores cuando el pago fue rechazado?
-// REEMPLAZAR: función updatePriceUI por una versión multi-contexto
-function updatePriceUI(ctx) {
-  // ctx puede ser: { order } o { service }
-  const order   = ctx?.order || null;
-  const service = ctx?.service || window.__CURRENT_SERVICE || null;
+  function updatePriceUI(ctx) {
+    // ctx puede ser: { order } o { service }
+    const order   = ctx?.order || null;
+    const service = ctx?.service || window.__CURRENT_SERVICE || null;
 
-  // Helpers
-  const pesos = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(Number(n||0));
+    const pesos = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(Number(n||0));
 
-  // 1) FORM: precios del servicio seleccionado
-  (function paintForm(){
-    const root = document.getElementById('screen-form');
-    if (!root) return;
-    const fPrice = service?.price_breakdown || service?.price || null;
-    const box = root.querySelector('#price-box');
-    if (!box) return;
+    // 1) FORM: precios del servicio seleccionado
+    (function paintForm(){
+      const root = document.getElementById('screen-form');
+      if (!root) return;
+      const fPrice = service?.price_breakdown || service?.price || null;
+      const box = root.querySelector('#price-box');
+      if (!box) return;
 
-    const titleEl = root.querySelector('#price-title');
-    const baseEl  = root.querySelector('#price-base');
-    const ivaEl   = root.querySelector('#price-tax');
-    const feeEl   = root.querySelector('#price-fee');
-    const totLbl  = root.querySelector('#price-total-label');
-    const totEl   = root.querySelector('#price-total');
-    const noteEl  = root.querySelector('#price-note');
+      const titleEl = root.querySelector('#price-title');
+      const baseEl  = root.querySelector('#price-base');
+      const ivaEl   = root.querySelector('#price-tax');
+      const feeEl   = root.querySelector('#price-fee');
+      const totLbl  = root.querySelector('#price-total-label');
+      const totEl   = root.querySelector('#price-total');
+      const noteEl  = root.querySelector('#price-note');
 
-    if (!fPrice) {
-      if (baseEl) baseEl.textContent = '—';
-      if (ivaEl)  ivaEl.textContent  = '—';
-      if (feeEl)  feeEl.textContent  = '—';
-      if (totEl)  totEl.textContent  = '—';
-      return;
-    }
-    // En el formulario siempre mostramos “Desglose/Detalle” y “Total a pagar”
-    if (titleEl) titleEl.textContent = 'Desglose de precios';
-    if (totLbl)  totLbl.textContent  = 'Total a pagar';
-    if (noteEl)  noteEl.textContent  = '';
-
-    if (baseEl) baseEl.textContent = pesos(fPrice.base ?? 0);
-    if (ivaEl)  ivaEl.textContent  = pesos(fPrice.iva  ?? fPrice.tax ?? 0);
-    if (feeEl)  feeEl.textContent  = pesos(fPrice.fee  ?? 0);
-    if (totEl)  totEl.textContent  = pesos(fPrice.total?? 0);
-  })();
-
-  // 2) ESTADO: precios tomados de la orden
-  (function paintStatus(){
-    const root = document.getElementById('screen-status');
-    if (!root) return;
-    const sPrice = order?.price_breakdown || order?.priceSnapshot || order?.price || null;
-
-    const titleEl = root.querySelector('#price-title');
-    const baseEl  = root.querySelector('#price-base');
-    const ivaEl   = root.querySelector('#price-tax');
-    const feeEl   = root.querySelector('#price-fee');
-    const totLbl  = root.querySelector('#price-total-label');
-    const totEl   = root.querySelector('#price-total');
-    const noteEl  = root.querySelector('#price-note');
-
-    if (!sPrice) {
-      if (baseEl) baseEl.textContent = '—';
-      if (ivaEl)  ivaEl.textContent  = '—';
-      if (feeEl)  feeEl.textContent  = '—';
-      if (totEl)  totEl.textContent  = '—';
-      return;
-    }
-
-    // Etiquetas según estado de pago en la orden
-    const norm = paymentState(order); // 'paid' | 'pending' | 'rejected' | 'canceled' | 'error'
-    if (norm === 'paid') {
-      if (titleEl) titleEl.textContent = 'Detalle de cobro';
-      if (totLbl)  totLbl.textContent  = 'Total pagado';
+      if (!fPrice) {
+        if (baseEl) baseEl.textContent = '—';
+        if (ivaEl)  ivaEl.textContent  = '—';
+        if (feeEl)  feeEl.textContent  = '—';
+        if (totEl)  totEl.textContent  = '—';
+        return;
+      }
+      if (titleEl) titleEl.textContent = 'Desglose de precios';
+      if (totLbl)  totLbl.textContent  = 'Total a pagar';
       if (noteEl)  noteEl.textContent  = '';
-    } else {
-      if (titleEl) titleEl.textContent = 'Resumen de costos';
-      if (totLbl)  totLbl.textContent  = 'Total del trámite (No cobrado)';
-      if (noteEl)  noteEl.textContent  = (norm === 'pending')
-        ? 'Aún no se ha realizado ningún cobro.'
-        : 'No se realizó ningún cobro. Puedes reintentarlo ahora o elegir otro método.';
-    }
 
-    if (baseEl) baseEl.textContent = pesos(sPrice.base ?? 0);
-    if (ivaEl)  ivaEl.textContent  = pesos(sPrice.iva  ?? sPrice.tax ?? 0);
-    if (feeEl)  feeEl.textContent  = pesos(sPrice.fee  ?? 0);
-    if (totEl)  totEl.textContent  = pesos(sPrice.total?? 0);
-  })();
-}
-// ...existing code...
-// ...existing code...
+      if (baseEl) baseEl.textContent = pesos(fPrice.base ?? 0);
+      if (ivaEl)  ivaEl.textContent  = pesos(fPrice.iva  ?? fPrice.tax ?? 0);
+      if (feeEl)  feeEl.textContent  = pesos(fPrice.fee  ?? 0);
+      if (totEl)  totEl.textContent  = pesos(fPrice.total?? 0);
+    })();
 
+    // 2) ESTADO: precios tomados de la orden
+    (function paintStatus(){
+      const root = document.getElementById('screen-status');
+      if (!root) return;
+      const sPrice = order?.price_breakdown || order?.priceSnapshot || order?.price || null;
+
+      const titleEl = root.querySelector('#price-title');
+      const baseEl  = root.querySelector('#price-base');
+      const ivaEl   = root.querySelector('#price-tax');
+      const feeEl   = root.querySelector('#price-fee');
+      const totLbl  = root.querySelector('#price-total-label');
+      const totEl   = root.querySelector('#price-total');
+      const noteEl  = root.querySelector('#price-note');
+
+      if (!sPrice) {
+        if (baseEl) baseEl.textContent = '—';
+        if (ivaEl)  ivaEl.textContent  = '—';
+        if (feeEl)  feeEl.textContent  = '—';
+        if (totEl)  totEl.textContent  = '—';
+        return;
+      }
+
+      const norm = paymentState(order); // 'paid' | 'pending' | 'rejected' | 'canceled' | 'error'
+      if (norm === 'paid') {
+        if (titleEl) titleEl.textContent = 'Detalle de cobro';
+        if (totLbl)  totLbl.textContent  = 'Total pagado';
+        if (noteEl)  noteEl.textContent  = '';
+      } else {
+        if (titleEl) titleEl.textContent = 'Resumen de costos';
+        if (totLbl)  totLbl.textContent  = 'Total del trámite (No cobrado)';
+        if (noteEl)  noteEl.textContent  = (norm === 'pending')
+          ? 'Aún no se ha realizado ningún cobro.'
+          : 'No se realizó ningún cobro. Escríbenos por WhatsApp para resolverlo.';
+      }
+
+      if (baseEl) baseEl.textContent = pesos(sPrice.base ?? 0);
+      if (ivaEl)  ivaEl.textContent  = pesos(sPrice.iva  ?? sPrice.tax ?? 0);
+      if (feeEl)  feeEl.textContent  = pesos(sPrice.fee  ?? 0);
+      if (totEl)  totEl.textContent  = pesos(sPrice.total?? 0);
+    })();
+  }
 
   // fallback: contacto desde historial
   if (!order.contact && order.id) {
@@ -1842,7 +1221,6 @@ function updatePriceUI(ctx) {
     const isPending = pnormR === 'pending';
     const showBlock = (isFailedPayment || isPending) && pnormR !== 'paid';
     retryBlock.style.display = showBlock ? '' : 'none';
-    // Retry visible para fallidos Y pendientes (usuario puede reintentar si cerró widget)
     const retryBtn = document.getElementById('btn-retry-payment');
     if (retryBtn) retryBtn.style.display = (isFailedPayment || isPending) ? '' : 'none';
     const refreshBtn = document.getElementById('btn-refresh-payment');
@@ -1851,28 +1229,7 @@ function updatePriceUI(ctx) {
       const btn = document.getElementById('btn-retry-payment');
       if (btn) {
         btn.dataset.orderId = order.id || '';
-        const isWA = (typeof order.payment === 'object') && order.payment?.mode === 'whatsapp';
-        btn.textContent = isWA ? '📲 Continuar por WhatsApp' : '🔄 Reintentar pago';
-      }
-      // Auto-check: si hay referencias pendientes para esta orden, intentar confirmar en background
-      if (order.id && !window.__autoCheckInFlight) {
-        const pendingRefs = getPendingRefsForOrder(order.id);
-        if (pendingRefs.length) {
-          window.__autoCheckInFlight = true;
-          (async () => {
-            try {
-              const terminal = await confirmAllPendingRefs(order.id);
-              const s = String(terminal?.status || terminal?.payment || '').toLowerCase();
-              if (s === 'paid') {
-                const st = await api(`orders?id=${encodeURIComponent(order.id)}`);
-                renderStatus(st);
-                updateHistoryStatus(order.id, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
-                removePendingRefsForOrder(order.id);
-                maybeNotifyPaid(st);
-              }
-            } catch {} finally { window.__autoCheckInFlight = false; }
-          })();
-        }
+        btn.textContent = '📲 Continuar por WhatsApp';
       }
     }
   }
@@ -1889,94 +1246,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const debugCard = document.getElementById('debug-card');
   const showDebug = new URLSearchParams(location.search).get('debug') === '1';
   if (debugCard) debugCard.style.display = showDebug ? 'block' : 'none';
-
-  // Recuperar pago pendiente de localStorage (sobrevive force-close y redirección PSE)
-  const q = new URLSearchParams(location.search);
-  const orderIdFromQS = q.get('orderId');
-  const pendingPay = loadPendingPayment();
-  if (!orderIdFromQS && pendingPay) {
-    // App reabierta tras force-close con pago PSE en curso
-    console.log('[startup] Recuperando pago pendiente:', pendingPay);
-    clearPendingPayment();
-    try {
-      await api(`payments_confirm?reference=${encodeURIComponent(pendingPay.reference)}`);
-    } catch (e) { console.warn('[startup] confirm pendiente skip:', e); }
-    try {
-      const st = await api(`orders?id=${encodeURIComponent(pendingPay.orderId)}`, { ignore404: true, silent: true });
-      if (st) {
-        renderStatus(st);
-        updateHistoryStatus(pendingPay.orderId, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
-        maybeNotifyPaid(st);
-        show(S.status);
-        if (normalizePayment(st.payment) === 'pending') {
-          pollForDelivery(pendingPay.orderId);
-        }
-      }
-    } catch {}
-  }
-
-  // Si regresamos con ?orderId=..., cargar estado y pintar hero dinámico
-  // [CONSERVAR – bloque robusto con reconfirmación y polling]
-  if (orderIdFromQS) {
-    // Guardar reference del pago pendiente ANTES de limpiarlo (se usa como fallback en reconfirmación)
-    const pendingRef = (pendingPay && pendingPay.orderId === orderIdFromQS) ? pendingPay.reference : null;
-    if (pendingRef) clearPendingPayment();
-    try {
-      let st = await api(`orders?id=${encodeURIComponent(orderIdFromQS)}`, { ignore404: true, silent: true });
-      if (!st) {
-        // limpiar URL y seguir en catálogo
-        q.delete('orderId'); q.delete('id'); q.delete('reference'); q.delete('ref');
-        history.replaceState({}, document.title, `${location.pathname}${q.toString() ? `?${q.toString()}` : ''}${location.hash || ''}`);
-      } else {
-        renderStatus(st);
-        // === ACTUALIZA HISTORIAL AUTOMÁTICAMENTE ===
-        updateHistoryStatus(orderIdFromQS, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
-        // ===========================================
-                maybeNotifyPaid(st);
-
-        // Polling automático si pagó pero aún no entregado
-        if (normalizePayment(st.payment) === 'paid' && normalizeOrderStatus(st.status) !== 'delivered') {
-          pollForDelivery(orderIdFromQS);
-        }
-
-        show(S.status);
-
-        // Limpiar URL para que refresh no vuelva al comprobante
-        cleanOrderUrl();
-
-        // Reconfirmación + polling si sigue pendiente (Wompi)
-        const isWompi = st?.payment?.mode === 'wompi' || st?.paymentMode === 'wompi';
-        const isPending = (normalizePayment(st.payment) === 'pending');
-        if (isWompi && isPending) {
-          const txId = q.get('id') || q.get('transactionId') || '';
-          const ref  = q.get('reference') || q.get('ref') || pendingRef || '';
-          try {
-            const parts = [];
-            if (txId) parts.push(`transactionId=${encodeURIComponent(txId)}`);
-            if (ref)  parts.push(`reference=${encodeURIComponent(ref)}`);
-            parts.push(`orderId=${encodeURIComponent(orderIdFromQS)}`);
-            await api(`payments_confirm?${parts.join('&')}`);
-          } catch (e) { console.warn('[return] reconfirm skip:', e); }
-          for (let i = 0; i < 3; i++) {
-            await new Promise(r => setTimeout(r, 600 * (i + 1)));
-            try {
-              st = await api(`orders?id=${encodeURIComponent(orderIdFromQS)}`, { ignore404: true, silent: true });
-              if (!st) break;
-              renderStatus(st);
-              // === REFRESCA HISTORIAL EN CADA PULL ===
-              updateHistoryStatus(orderIdFromQS, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
-              // =======================================
-                         maybeNotifyPaid(st);       // ← agregado en cada actualización
-
-              if (normalizePayment(st.payment) !== 'pending') break;
-            } catch {}
-          }
-        }
-      }
-    } catch {
-      // silencioso en primer arranque
-    }
-  }
 
   // Header actions
   if (S.btnReload) {
@@ -2015,23 +1284,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   document.getElementById('btn-refresh-payment')?.addEventListener('click', async () => {
-    // Cancelar background poll — el usuario tomó control manual
-    _stopBgPoll();
     const btn = document.getElementById('btn-refresh-payment');
     const btnRetry = document.getElementById('btn-retry-payment');
     const oid = btnRetry?.dataset?.orderId || window.__lastOrderId || '';
     if (!oid) { showBanner('No se encontró el ID de la orden.', 'error'); return; }
     if (btn) { btn.disabled = true; btn.textContent = 'Verificando…'; }
     try {
-      await confirmAllPendingRefs(oid);
       const st = await api(`orders?id=${encodeURIComponent(oid)}`);
       renderStatus(st);
       updateHistoryStatus(oid, { status: st.status, payment: st.payment, delivery: st.delivery ?? null });
       const pnorm = normalizePayment(st.payment);
-      if (pnorm === 'paid') {
-        removePendingRefsForOrder(oid);
-        maybeNotifyPaid(st);
-      }
+      if (pnorm === 'paid' && normalizeOrderStatus(st.status) !== 'delivered') pollForDelivery(oid);
     } catch (e) {
       showBanner(`No se pudo actualizar: ${e?.message || e}`, 'error');
     } finally {
@@ -2041,14 +1304,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (S.btnCreate) {
     S.btnCreate.addEventListener('click', (e) => { e.preventDefault(); createOrder().catch(err => alert(err.message)); });
   }
-
-  // Simulador mock
-  document.getElementById('pay-sim')?.addEventListener('click', (e)=>{
-    const btn = e.target.closest('[data-sim]');
-    if (!btn) return;
-    const scenario = btn.dataset.sim;
-    confirmPayment(scenario).catch(err=>alert(err.message));
-  });
 
   // Init principal
   try { await loadConfig(); setFabWhatsApp(null); } catch { setFabWhatsApp(null); }
@@ -2060,9 +1315,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadServices();
   if (typeof loadCatalog === 'function') loadCatalog();
 
-// Simulador de pago: siempre oculto al inicio, se muestra dinámicamente en modo mock
-if (S.paySim) S.paySim.classList.add('hidden');
-// ...existing code...
   const f = document.getElementById('form');
   if (f) {
     __FORM_BASE_HTML = f.innerHTML; // snapshot base
@@ -2070,41 +1322,39 @@ if (S.paySim) S.paySim.classList.add('hidden');
     obs.observe(f, { childList: true, subtree: true });
   }
 
-  // ...existing code...
-
   // Bottom nav handlers
-document.getElementById('bottom-nav')?.addEventListener('click', (e) => {
-  const btn = e.target.closest('button[data-nav]');
-  if (!btn) return;
-  const where = btn.dataset.nav;
+  document.getElementById('bottom-nav')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-nav]');
+    if (!btn) return;
 
-  // Marcar tab activa
-  document.querySelectorAll('#bottom-nav button').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+    // Marcar tab activa
+    document.querySelectorAll('#bottom-nav button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
 
-  if (where === 'catalog') {
-    show(S.list);
-    setTimeout(() => window.scrollTo({ top: 0, behavior: 'instant' }), 0);
-  }
-  if (where === 'history') {
-    _historyCache = null;
-    renderHistory();
-    show(S.history);
-  }
-  if (where === 'about') {
-    document.getElementById('about-modal')?.showModal();
-  }
-  // NUEVO: acción del botón "Contacto"
-  if (where === 'contact') {
-    const msg = buildWAOrderMessage(null);
-    if (hasWhatsAppNumber()) window.open(buildWhatsAppLink(msg), '_blank');
-  }
-});
+    const where = btn.dataset.nav;
+    if (where === 'catalog') {
+      show(S.list);
+      setTimeout(() => window.scrollTo({ top: 0, behavior: 'instant' }), 0);
+    }
+    if (where === 'history') {
+      _historyCache = null;
+      renderHistory();
+      show(S.history);
+    }
+    if (where === 'about') {
+      document.getElementById('about-modal')?.showModal();
+    }
+    // NUEVO: acción del botón "Contacto"
+    if (where === 'contact') {
+      const msg = buildWAOrderMessage(null);
+      if (hasWhatsAppNumber()) window.open(buildWhatsAppLink(msg), '_blank');
+    }
+  });
 
-// Cierre del modal
-document.getElementById('about-close')?.addEventListener('click', () => {
-  document.getElementById('about-modal')?.close();
-});
+  // Cierre del modal
+  document.getElementById('about-close')?.addEventListener('click', () => {
+    document.getElementById('about-modal')?.close();
+  });
 
   /* =====================
      Copiar (data-copy)

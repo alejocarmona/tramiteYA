@@ -27,7 +27,7 @@ export interface Service {
 }
 
 export interface Payment {
-  mode: 'mock' | 'wompi' | 'whatsapp';
+  mode: 'whatsapp';
   status: 'pending' | 'paid' | 'failed';
   external_id?: string;
   events?: Array<{ at: string; type: string; payload?: unknown }>;
@@ -50,32 +50,4 @@ export interface Order {
 export interface Flags {
   payments: { useMock: boolean };
   maintenance?: { enabled: boolean; message?: string };
-}
-
-// --- Configuración unificada de pagos ---
-
-export type PaymentEnvName = "mock" | "test" | "prod";
-
-// Método de checkout activo, independiente del ambiente Wompi (activeEnv).
-export type CheckoutMode = "WOMPI" | "WHATSAPP";
-
-export interface WompiEnvConfig {
-  publicKey: string;
-  secretKey: string;
-  integritySecret: string;
-  eventsSecret?: string;
-  apiUrl: string;          // "https://api-sandbox.wompi.co" o "https://api.wompi.co"
-  returnUrl?: string;      // URL base de retorno tras pago PSE (ej: "https://apptramiteya.web.app")
-  checkoutUrlBase?: string;
-}
-
-export interface PaymentsConfig {
-  // Ausente → se asume "WHATSAPP" (default del negocio).
-  checkoutMode?: CheckoutMode;
-  activeEnv: PaymentEnvName;
-  environments: {
-    mock: Record<string, never>;
-    test: WompiEnvConfig;
-    prod: WompiEnvConfig;
-  };
 }

@@ -7,7 +7,7 @@ const utils_js_1 = require("./utils.js");
  * POST /orders
  * Crea una orden con esquema estable:
  *  - status = 'queued'
- *  - payment = { mode: 'mock'|'wompi', status: 'pending' }
+ *  - payment = { mode: 'whatsapp', status: 'pending' }
  *  - delivery = { channel: null, fileUrl: null }
  */
 async function createOrder(req, res) {
@@ -43,21 +43,8 @@ async function createOrder(req, res) {
                     Number(svc.fee ?? 0) +
                     Number(svc.iva ?? 0)),
         };
-    // Leer método de checkout desde config/payments (misma fuente que payments_init)
-    let paymentMode = "whatsapp";
-    try {
-        const pcSnap = await db.collection("config").doc("payments").get();
-        const pc = pcSnap.exists ? pcSnap.data() : null;
-        const checkoutMode = pc?.checkoutMode || "WHATSAPP";
-        if (checkoutMode === "WHATSAPP") {
-            paymentMode = "whatsapp";
-        }
-        else {
-            const activeEnv = pc?.activeEnv || "mock";
-            paymentMode = activeEnv === "mock" ? "mock" : "wompi";
-        }
-    }
-    catch { /* default whatsapp */ }
+    // Único método de pago soportado: checkout asistido por WhatsApp.
+    const paymentMode = "whatsapp";
     // Construir orden con defaults robustos
     const now = new Date().toISOString();
     const ref = db.collection("orders").doc();

@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.orders = exports.services = exports.admin_confirm_payment = exports.admin_upload = exports.config_public = exports.payments_confirm = exports.payments_init = exports.notify = exports.onOrderPaymentPaid = exports.health = void 0;
+exports.orders = exports.services = exports.admin_confirm_payment = exports.admin_upload = exports.config_public = exports.notify = exports.onOrderPaymentPaid = exports.health = void 0;
 // functions/src/index.ts
 const cors_1 = __importDefault(require("cors"));
 const https_1 = require("firebase-functions/v2/https");
@@ -43,9 +43,6 @@ exports.notify = (0, https_1.onRequest)({ cors: ["https://apptramiteya.web.app",
 });
 // ...existing code...
 // Re-exporta funciones de otros módulos (usa .js)
-var payments_js_1 = require("./payments.js");
-Object.defineProperty(exports, "payments_init", { enumerable: true, get: function () { return payments_js_1.payments_init; } });
-Object.defineProperty(exports, "payments_confirm", { enumerable: true, get: function () { return payments_js_1.payments_confirm; } });
 var config_js_1 = require("./config.js");
 Object.defineProperty(exports, "config_public", { enumerable: true, get: function () { return config_js_1.config_public; } });
 var admin_js_1 = require("./admin.js");
