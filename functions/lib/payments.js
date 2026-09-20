@@ -34,6 +34,25 @@ function getActiveEnv(config) {
     const wompi = config.environments?.[env] || null;
     return { env, wompi };
 }
+// Ausente → "WHATSAPP" (default del negocio, cubre doc/campo inexistente).
+function getCheckoutMode(config) {
+    return config?.checkoutMode || "WHATSAPP";
+}
+async function computeOrderSummary(db, orderId) {
+    try {
+        const snap = await db.collection("orders").doc(orderId).get();
+        if (!snap.exists)
+            return { serviceName: "Trámite", total: 0 };
+        const d = snap.data() || {};
+        const serviceName = String(d.serviceName || d.service_id || "Trámite");
+        const total = Number(d?.price_breakdown?.total) || 0;
+        return { serviceName, total };
+    }
+    catch (e) {
+        console.error("[computeOrderSummary] error", e);
+        return { serviceName: "Trámite", total: 0 };
+    }
+}
 // --- Helpers ---
 async function computeAmountInCents(db, orderId) {
     try {
@@ -89,6 +108,20 @@ exports.payments_init = (0, https_1.onRequest)(async (req, res) => {
         try {
             const db = (0, utils_js_1.ensureFirebase)();
             const config = await readPaymentsConfig(db);
+            const checkoutMode = getCheckoutMode(config);
+            console.log("[payments_init] checkoutMode =", checkoutMode);
+            // === Flujo WhatsApp asistido (default del negocio) ===
+            if (checkoutMode === "WHATSAPP") {
+                const orderId = String(req.body?.orderId || req.query?.orderId || "").trim();
+                if (!orderId)
+                    return bad(res, "orderId required");
+                const summary = await computeOrderSummary(db, orderId);
+                return ok(res, {
+                    mode: "whatsapp",
+                    orderId,
+                    waPayload: { orderId, serviceName: summary.serviceName, total: summary.total },
+                });
+            }
             const { env, wompi } = getActiveEnv(config);
             console.log("[payments_init] activeEnv =", env);
             // Sin config → mock con razón

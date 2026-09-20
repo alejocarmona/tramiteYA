@@ -11,6 +11,7 @@
       { "source": "/payments_init",    "function": "payments_init" },
       { "source": "/payments_confirm", "function": "payments_confirm" },
       { "source": "/admin_upload",     "function": "admin_upload" },
+      { "source": "/admin_confirm_payment", "function": "admin_confirm_payment" },
       { "source": "/services",         "function": "services" },
       { "source": "/orders",           "function": "orders" }
     ]

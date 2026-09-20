@@ -15,9 +15,30 @@ async function main(){
       enabled: true,
       price: { base: 10000, fee: 2500, iva: 1900, total: 14400 },
       fields: [
-        { id: 'tipo_doc', label: 'Tipo de Documento', type: 'select', required: true, options: ['CC','CE'] },
-        { id: 'numero_doc', label: 'Número de Documento', type: 'text', required: true, pattern: '^[0-9]{6,12}$' },
-        { id: 'fecha_nac', label: 'Fecha de Nacimiento', type: 'date', required: true }
+        { id: 'cedula', label: 'Cédula', type: 'text', required: true, pattern: '^[0-9]{6,12}$' }
+      ],
+      sla_hours: 24,
+      deliver_channels: ['email','whatsapp']
+    },
+    {
+      id: 'libertad_tradicion',
+      name: 'Certificado Libertad y Tradición',
+      enabled: true,
+      price: { base: 18000, fee: 3500, iva: 4085, total: 25585 },
+      fields: [
+        { id: 'matricula_inmobiliaria', label: 'Matrícula Inmobiliaria', type: 'text', required: true },
+        { id: 'ciudad', label: 'Ciudad', type: 'text', required: true }
+      ],
+      sla_hours: 24,
+      deliver_channels: ['email','whatsapp']
+    },
+    {
+      id: 'antecedentes_policia',
+      name: 'Antecedentes Policía',
+      enabled: true,
+      price: { base: 12000, fee: 3000, iva: 2280, total: 17280 },
+      fields: [
+        { id: 'cedula', label: 'Cédula', type: 'text', required: true, pattern: '^[0-9]{6,12}$' }
       ],
       sla_hours: 24,
       deliver_channels: ['email','whatsapp']
@@ -62,8 +83,7 @@ async function main(){
       enabled: true,
       price: { base: 12000, fee: 3000, iva: 2280, total: 17280 },
       fields: [
-        { id: 'tipo_doc', label: 'Tipo de Documento', type: 'select', required: true, options: ['CC','CE'] },
-        { id: 'numero_doc', label: 'Número de Documento', type: 'text', required: true, pattern: '^[0-9]{6,12}$' }
+        { id: 'cedula', label: 'Cédula', type: 'text', required: true, pattern: '^[0-9]{6,12}$' }
       ],
       sla_hours: 24,
       deliver_channels: ['email','whatsapp']
@@ -74,8 +94,35 @@ async function main(){
       enabled: true,
       price: { base: 12000, fee: 3000, iva: 2280, total: 17280 },
       fields: [
-        { id: 'tipo_doc', label: 'Tipo de Documento', type: 'select', required: true, options: ['CC','CE'] },
-        { id: 'numero_doc', label: 'Número de Documento', type: 'text', required: true, pattern: '^[0-9]{6,12}$' }
+        { id: 'cedula', label: 'Cédula', type: 'text', required: true, pattern: '^[0-9]{6,12}$' }
+      ],
+      sla_hours: 24,
+      deliver_channels: ['email','whatsapp']
+    },
+    {
+      id: 'pasaporte',
+      name: 'Pasaporte',
+      enabled: true,
+      price: { base: 22000, fee: 4000, iva: 4940, total: 30940 },
+      fields: [
+        { id: 'cedula', label: 'Cédula', type: 'text', required: true, pattern: '^[0-9]{6,12}$' },
+        { id: 'nombre_completo', label: 'Nombre completo', type: 'text', required: true },
+        { id: 'correo', label: 'Correo', type: 'email', required: true },
+        { id: 'celular', label: 'Celular', type: 'tel', required: true, pattern: '^[0-9]{7,15}$' }
+      ],
+      sla_hours: 24,
+      deliver_channels: ['email','whatsapp']
+    },
+    {
+      id: 'pension_certificado',
+      name: 'Certificado de afiliación (PENSIÓN)',
+      enabled: true,
+      price: { base: 14000, fee: 3000, iva: 3230, total: 20230 },
+      fields: [
+        { id: 'entidad', label: 'Entidad', type: 'select', required: true, options: ['Colpensiones','Colfondos','Porvenir','Protección','Skandia'] },
+        { id: 'cedula', label: 'Cédula', type: 'text', required: true, pattern: '^[0-9]{6,12}$' },
+        { id: 'correo', label: 'Correo', type: 'email', required: true },
+        { id: 'anio_nacimiento', label: 'Año de nacimiento', type: 'number', required: true }
       ],
       sla_hours: 24,
       deliver_channels: ['email','whatsapp']

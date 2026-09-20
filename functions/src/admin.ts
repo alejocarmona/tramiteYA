@@ -142,3 +142,59 @@ export const admin_upload = onRequest(async (req: Request, res: Response) => {
     }
   });
 });
+
+/**
+ * POST /admin_confirm_payment
+ * Marca una orden como pagada manualmente (venta cerrada por un asesor vía WhatsApp).
+ * Reutiliza el mismo trigger onOrderPaymentPaid que el flujo Wompi.
+ *
+ * Headers:  Authorization: Bearer <uploadSecret>
+ * Body:     { orderId }
+ */
+export const admin_confirm_payment = onRequest(async (req: Request, res: Response) => {
+  return cors(req, res, async () => {
+    try {
+      if (req.method !== "POST") return bad(res, "Method Not Allowed", 405);
+
+      const db = ensureFirebase();
+
+      const authHeader = req.headers.authorization || "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+      if (!token) return bad(res, "Authorization header required", 401);
+
+      const adminSnap = await db.collection("config").doc("admin").get();
+      const uploadSecret = adminSnap.exists ? adminSnap.get("uploadSecret") : null;
+      if (!uploadSecret || token !== uploadSecret) {
+        return bad(res, "Invalid credentials", 403);
+      }
+
+      const { orderId } = req.body || {};
+      if (!orderId) return bad(res, "orderId is required");
+
+      const orderRef = db.collection("orders").doc(String(orderId));
+      const orderSnap = await orderRef.get();
+      if (!orderSnap.exists) return bad(res, "Order not found", 404);
+
+      const now = new Date().toISOString();
+      await orderRef.set({
+        payment: {
+          mode: "whatsapp",
+          status: "paid",
+          updatedAt: now,
+        },
+        audit: {
+          ...(orderSnap.data() as any)?.audit,
+          updated_at: now,
+          actor: "operator",
+        },
+      }, { merge: true });
+
+      console.log("[admin_confirm_payment] Pago confirmado manualmente para orden:", orderId);
+
+      return ok(res, { ok: true, orderId, status: "paid" });
+    } catch (e: any) {
+      console.error("[admin_confirm_payment] error:", e);
+      return bad(res, String(e?.message || e), 500);
+    }
+  });
+});

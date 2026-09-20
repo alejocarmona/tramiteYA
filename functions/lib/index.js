@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.orders = exports.services = exports.admin_upload = exports.config_public = exports.payments_confirm = exports.payments_init = exports.notify = exports.onOrderPaymentPaid = exports.health = void 0;
+exports.orders = exports.services = exports.admin_confirm_payment = exports.admin_upload = exports.config_public = exports.payments_confirm = exports.payments_init = exports.notify = exports.onOrderPaymentPaid = exports.health = void 0;
 // functions/src/index.ts
 const cors_1 = __importDefault(require("cors"));
 const https_1 = require("firebase-functions/v2/https");
@@ -50,6 +50,7 @@ var config_js_1 = require("./config.js");
 Object.defineProperty(exports, "config_public", { enumerable: true, get: function () { return config_js_1.config_public; } });
 var admin_js_1 = require("./admin.js");
 Object.defineProperty(exports, "admin_upload", { enumerable: true, get: function () { return admin_js_1.admin_upload; } });
+Object.defineProperty(exports, "admin_confirm_payment", { enumerable: true, get: function () { return admin_js_1.admin_confirm_payment; } });
 const cors = (0, cors_1.default)({ origin: true });
 // ----- Services -----
 // GET /services          -> lista

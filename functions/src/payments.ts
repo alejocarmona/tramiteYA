@@ -5,7 +5,7 @@ import corsLib from "cors";
 import crypto from "node:crypto";
 import { ensureFirebase } from "./utils.js";
 import type { Firestore } from "firebase-admin/firestore";
-import type { PaymentsConfig, WompiEnvConfig } from "./types.js";
+import type { CheckoutMode, PaymentsConfig, WompiEnvConfig } from "./types.js";
 
 const cors = corsLib({ origin: true });
 
@@ -31,6 +31,25 @@ function getActiveEnv(config: PaymentsConfig | null): { env: string; wompi: Womp
   if (env === "mock") return { env, wompi: null };
   const wompi = config.environments?.[env as "test" | "prod"] || null;
   return { env, wompi };
+}
+
+// Ausente → "WHATSAPP" (default del negocio, cubre doc/campo inexistente).
+function getCheckoutMode(config: PaymentsConfig | null): CheckoutMode {
+  return config?.checkoutMode || "WHATSAPP";
+}
+
+async function computeOrderSummary(db: Firestore, orderId: string): Promise<{ serviceName: string; total: number }> {
+  try {
+    const snap = await db.collection("orders").doc(orderId).get();
+    if (!snap.exists) return { serviceName: "Trámite", total: 0 };
+    const d: any = snap.data() || {};
+    const serviceName = String(d.serviceName || d.service_id || "Trámite");
+    const total = Number(d?.price_breakdown?.total) || 0;
+    return { serviceName, total };
+  } catch (e) {
+    console.error("[computeOrderSummary] error", e);
+    return { serviceName: "Trámite", total: 0 };
+  }
 }
 
 // --- Helpers ---
@@ -87,6 +106,23 @@ export const payments_init = onRequest(async (req, res) => {
     try {
       const db = ensureFirebase();
       const config = await readPaymentsConfig(db);
+      const checkoutMode = getCheckoutMode(config);
+
+      console.log("[payments_init] checkoutMode =", checkoutMode);
+
+      // === Flujo WhatsApp asistido (default del negocio) ===
+      if (checkoutMode === "WHATSAPP") {
+        const orderId = String(req.body?.orderId || req.query?.orderId || "").trim();
+        if (!orderId) return bad(res, "orderId required");
+
+        const summary = await computeOrderSummary(db, orderId);
+        return ok(res, {
+          mode: "whatsapp",
+          orderId,
+          waPayload: { orderId, serviceName: summary.serviceName, total: summary.total },
+        });
+      }
+
       const { env, wompi } = getActiveEnv(config);
 
       console.log("[payments_init] activeEnv =", env);

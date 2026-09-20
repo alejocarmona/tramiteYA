@@ -533,6 +533,32 @@ function buildWAOrderMessage(order) {
   return parts.join(" ");
 }
 
+// Mensaje de checkout WhatsApp: usa el resumen calculado en el backend (payments_init),
+// evita reenviar form_data/cédula por la URL del enlace.
+function buildCheckoutWAMessage(payInit) {
+  const p = payInit?.waPayload || {};
+  const parts = [
+    'Hola, quiero completar el pago de mi pedido en TrámiteYA.',
+    p.orderId ? `Orden: ${p.orderId}` : '',
+    p.serviceName ? `Trámite: ${p.serviceName}` : '',
+    (p.total !== undefined && p.total !== null && p.total > 0) ? `Total a pagar: ${pesos(p.total)}` : ''
+  ].filter(Boolean);
+  return parts.join('\n');
+}
+
+function showWhatsAppCheckout(payInit) {
+  const link = buildWhatsAppLink(buildCheckoutWAMessage(payInit));
+  const panel = document.getElementById('pay-wa');
+  const cta = document.getElementById('pay-wa-link');
+  if (cta) { cta.href = link; cta.target = '_blank'; cta.rel = 'noopener'; }
+  if (panel) {
+    panel.classList.remove('hidden');
+    panel.style.display = 'block';
+    setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+  }
+  window.open(link, '_blank');
+}
+
 function setFabWhatsApp(orderOrNull) {
   const fab = document.getElementById('fab-whatsapp');
   if (!fab) return;
@@ -1219,6 +1245,15 @@ async function createOrder() {
       return;
     }
 
+if (payInit?.mode === 'whatsapp') {
+  disableFormInputs(false);
+  lockHeader(false);
+  lockNavigation(false);
+  setBtnLoading(S.btnCreate, false, "", "Crear orden");
+  showWhatsAppCheckout(payInit);
+  return;
+}
+
 if (payInit?.mode === 'mock') {
   // Mostrar simulador de pago en modo mock
   if (S.paySim) {
@@ -1413,9 +1448,12 @@ function updateHero(order) {
     if (heroSub)   heroSub.textContent   = 'No pudimos procesar el pago. Puedes reintentarlo más tarde o elegir otro método.';
   } else {
     hero.classList.add('is-pending');
-    if (heroIcon)  heroIcon.textContent  = '⏳';
-    if (heroTitle) heroTitle.textContent = 'Pago pendiente';
-    if (heroSub)   heroSub.textContent   = 'Tu pago está pendiente. Si cerraste esta ventana, puedes reintentarlo desde tu historial.';
+    const isWA = (typeof order?.payment === 'object') && order.payment?.mode === 'whatsapp';
+    if (heroIcon)  heroIcon.textContent  = isWA ? '📲' : '⏳';
+    if (heroTitle) heroTitle.textContent = isWA ? 'Pago pendiente por WhatsApp' : 'Pago pendiente';
+    if (heroSub)   heroSub.textContent   = isWA
+      ? 'Completa tu pago por WhatsApp con nuestro asesor. Te confirmaremos aquí cuando quede registrado.'
+      : 'Tu pago está pendiente. Si cerraste esta ventana, puedes reintentarlo desde tu historial.';
   }
 
   // Mejora: usar audit.created_at si existe
@@ -1522,6 +1560,13 @@ async function retryPayment(orderId) {
       }
 
       setBtnState(false, '🔄 Reintentar pago');
+      return;
+    }
+
+    if (payInit?.mode === 'whatsapp') {
+      setBtnState(false, '📲 Continuar por WhatsApp');
+      showBanner('Te llevamos a WhatsApp para continuar el pago con un asesor.', 'info');
+      showWhatsAppCheckout(payInit);
       return;
     }
 
@@ -1804,7 +1849,11 @@ function updatePriceUI(ctx) {
     if (refreshBtn) refreshBtn.style.display = showBlock ? '' : 'none';
     if (showBlock) {
       const btn = document.getElementById('btn-retry-payment');
-      if (btn) btn.dataset.orderId = order.id || '';
+      if (btn) {
+        btn.dataset.orderId = order.id || '';
+        const isWA = (typeof order.payment === 'object') && order.payment?.mode === 'whatsapp';
+        btn.textContent = isWA ? '📲 Continuar por WhatsApp' : '🔄 Reintentar pago';
+      }
       // Auto-check: si hay referencias pendientes para esta orden, intentar confirmar en background
       if (order.id && !window.__autoCheckInFlight) {
         const pendingRefs = getPendingRefsForOrder(order.id);

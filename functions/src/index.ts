@@ -38,7 +38,7 @@ export const notify = onRequest({ cors: ["https://apptramiteya.web.app", "http:/
 // Re-exporta funciones de otros módulos (usa .js)
 export { payments_init, payments_confirm } from "./payments.js";
 export { config_public } from "./config.js";
-export { admin_upload } from "./admin.js";
+export { admin_upload, admin_confirm_payment } from "./admin.js";
 
 const cors = corsLib({ origin: true });
 

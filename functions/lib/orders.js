@@ -43,15 +43,21 @@ async function createOrder(req, res) {
                     Number(svc.fee ?? 0) +
                     Number(svc.iva ?? 0)),
         };
-    // Leer ambiente de pagos desde config/payments
-    let paymentMode = "mock";
+    // Leer método de checkout desde config/payments (misma fuente que payments_init)
+    let paymentMode = "whatsapp";
     try {
         const pcSnap = await db.collection("config").doc("payments").get();
         const pc = pcSnap.exists ? pcSnap.data() : null;
-        const activeEnv = pc?.activeEnv || "mock";
-        paymentMode = activeEnv === "mock" ? "mock" : "wompi";
+        const checkoutMode = pc?.checkoutMode || "WHATSAPP";
+        if (checkoutMode === "WHATSAPP") {
+            paymentMode = "whatsapp";
+        }
+        else {
+            const activeEnv = pc?.activeEnv || "mock";
+            paymentMode = activeEnv === "mock" ? "mock" : "wompi";
+        }
     }
-    catch { /* default mock */ }
+    catch { /* default whatsapp */ }
     // Construir orden con defaults robustos
     const now = new Date().toISOString();
     const ref = db.collection("orders").doc();

@@ -57,14 +57,19 @@ export async function createOrder(req: Request, res: Response) {
       ),
     } as Price);
 
-// Leer ambiente de pagos desde config/payments
-let paymentMode: "mock" | "wompi" = "mock";
+// Leer método de checkout desde config/payments (misma fuente que payments_init)
+let paymentMode: "mock" | "wompi" | "whatsapp" = "whatsapp";
 try {
   const pcSnap = await db.collection("config").doc("payments").get();
   const pc = pcSnap.exists ? pcSnap.data() : null;
-  const activeEnv = pc?.activeEnv || "mock";
-  paymentMode = activeEnv === "mock" ? "mock" : "wompi";
-} catch { /* default mock */ }
+  const checkoutMode = pc?.checkoutMode || "WHATSAPP";
+  if (checkoutMode === "WHATSAPP") {
+    paymentMode = "whatsapp";
+  } else {
+    const activeEnv = pc?.activeEnv || "mock";
+    paymentMode = activeEnv === "mock" ? "mock" : "wompi";
+  }
+} catch { /* default whatsapp */ }
 
   // Construir orden con defaults robustos
   const now = new Date().toISOString();
@@ -85,7 +90,7 @@ type OrderDoc = {
   form_data: Record<string, unknown>;
   price_breakdown: Price;
   status: string;
-  payment: { mode: "mock" | "wompi"; status: string } | string;
+  payment: { mode: "mock" | "wompi" | "whatsapp"; status: string } | string;
   delivery: { channel: string | null; fileUrl: string | null };
   audit: { created_at: string; updated_at: string; actor: string };
 };
@@ -99,7 +104,7 @@ const order: OrderDoc
     form_data: (form_data as Record<string, unknown>) || {},
     price_breakdown: price,
     status: "queued",
-    payment: { mode: paymentMode as "mock" | "wompi", status: "pending" },
+    payment: { mode: paymentMode, status: "pending" },
     delivery: { channel: null, fileUrl: null },
     audit: { created_at: now, updated_at: now, actor: "user" },
   };

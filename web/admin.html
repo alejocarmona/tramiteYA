@@ -60,6 +60,13 @@
 
     <div id="result" class="result hidden"></div>
 
+    <div class="divider"></div>
+
+    <h2 style="font-size:1rem;margin-bottom:4px;">Confirmar pago por WhatsApp</h2>
+    <p class="help" style="margin-bottom:8px;">Usa el mismo ID de orden de arriba para marcar el pago como recibido tras cerrar la venta por WhatsApp.</p>
+    <button class="btn" id="btn-confirm-payment" style="background:#16a34a;color:#fff;" disabled>Marcar pago como recibido</button>
+    <div id="result-confirm" class="result hidden"></div>
+
     <details>
       <summary>Ordenes pendientes de entrega</summary>
       <div id="pending-list" style="margin-top:12px;font-size:0.85rem;color:#94a3b8;">
@@ -177,6 +184,50 @@ function showResult(text, type) {
   $result.className = `result ${type}`;
 }
 
+// --- Confirmar pago (WhatsApp) ---
+const $btnConfirm = document.getElementById('btn-confirm-payment');
+const $resultConfirm = document.getElementById('result-confirm');
+
+function updateConfirmBtn() {
+  $btnConfirm.disabled = !($secret.value.trim() && $orderId.value.trim());
+}
+$orderId.addEventListener('input', updateConfirmBtn);
+$secret.addEventListener('input', updateConfirmBtn);
+
+$btnConfirm.onclick = async () => {
+  $btnConfirm.disabled = true;
+  $btnConfirm.textContent = 'Confirmando...';
+  $resultConfirm.className = 'result hidden';
+
+  try {
+    const resp = await fetch('/admin_confirm_payment', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${$secret.value.trim()}`
+      },
+      body: JSON.stringify({ orderId: $orderId.value.trim() })
+    });
+
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      $resultConfirm.textContent = `Error ${resp.status}: ${data.error || 'Error desconocido'}`;
+      $resultConfirm.className = 'result err';
+      return;
+    }
+
+    $resultConfirm.textContent = `Pago confirmado para la orden ${data.orderId}.`;
+    $resultConfirm.className = 'result ok';
+  } catch (e) {
+    $resultConfirm.textContent = `Error de red: ${e.message}`;
+    $resultConfirm.className = 'result err';
+  } finally {
+    $btnConfirm.textContent = 'Marcar pago como recibido';
+    updateConfirmBtn();
+  }
+};
+
 // --- Pending orders ---
 async function loadPendingOrders() {
   try {
@@ -191,6 +242,7 @@ loadPendingOrders();
 
 // Init
 updateBtn();
+updateConfirmBtn();
 </script>
 </body>
 </html>
