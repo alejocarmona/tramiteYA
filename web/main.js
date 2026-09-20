@@ -186,16 +186,34 @@ function buildWAOrderMessage(order) {
   return parts.join(" ");
 }
 
-// Mensaje de checkout WhatsApp: orden ya persistida en Firestore, solo se referencia
-// por id — evita reenviar form_data/cédula por la URL del enlace.
-function buildCheckoutWAMessage({ orderId, serviceName, total } = {}) {
+// Mapea form_data (ids de campo) a { label, value } usando la definición del servicio,
+// para que el asesor reciba el mismo detalle que el cliente diligenció en el formulario.
+function buildFormEntries(formData, fields) {
+  if (!formData) return [];
+  const labelById = {};
+  (fields || []).forEach(f => { labelById[f.id] = f.label; });
+  return Object.entries(formData)
+    .filter(([k, v]) => !k.startsWith('contact_') && v !== undefined && v !== null && String(v).trim() !== '')
+    .map(([k, v]) => [labelById[k] || k, v]);
+}
+
+// Mensaje de checkout WhatsApp: incluye todos los datos capturados en el formulario
+// (contacto + campos propios del trámite) para que el asesor no tenga que pedirlos de nuevo.
+function buildCheckoutWAMessage({ orderId, serviceName, total, contact, formEntries } = {}) {
   const parts = [
     'Hola, quiero completar el pago de mi pedido en TrámiteYA.',
     orderId ? `Orden: ${orderId}` : '',
     serviceName ? `Trámite: ${serviceName}` : '',
-    (total !== undefined && total !== null && total > 0) ? `Total a pagar: ${pesos(total)}` : ''
-  ].filter(Boolean);
-  return parts.join('\n');
+  ];
+  if (contact?.name)  parts.push(`Nombre: ${contact.name}`);
+  if (contact?.email) parts.push(`Correo: ${contact.email}`);
+  if (contact?.phone) parts.push(`Celular: ${contact.phone}`);
+  if (Array.isArray(formEntries) && formEntries.length) {
+    parts.push('Datos del trámite:');
+    formEntries.forEach(([label, value]) => parts.push(`- ${label}: ${value}`));
+  }
+  if (total !== undefined && total !== null && total > 0) parts.push(`Total a pagar: ${pesos(total)}`);
+  return parts.filter(Boolean).join('\n');
 }
 
 function showWhatsAppCheckout(summary) {
@@ -816,6 +834,8 @@ async function createOrder() {
       orderId: order.id,
       serviceName: currentService.name,
       total: currentService.price?.total,
+      contact,
+      formEntries: buildFormEntries(data, currentService.fields),
     });
     return;
 
@@ -969,10 +989,17 @@ async function retryPayment(orderId) {
   setBtnState(true, 'Abriendo WhatsApp…');
   try {
     const order = await api(`orders?id=${encodeURIComponent(orderId)}`);
+    let fields = [];
+    try {
+      const svcData = await api(`services?id=${encodeURIComponent(order.serviceId)}`, { silent: true });
+      fields = svcData?.item?.fields || [];
+    } catch { /* si falla, se muestra el form_data sin etiquetas amigables */ }
     showWhatsAppCheckout({
       orderId,
       serviceName: order.serviceName,
       total: order.price_breakdown?.total,
+      contact: order.contact,
+      formEntries: buildFormEntries(order.form_data, fields),
     });
     setBtnState(false, '📲 Continuar por WhatsApp');
   } catch (e) {
