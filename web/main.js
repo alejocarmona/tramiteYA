@@ -103,13 +103,14 @@ function pollForDelivery(orderId) {
 /* =====================
    Config & Init
 ===================== */
-// Config pública (solo whatsappNumber)
-let APP_CONFIG = { whatsappNumber: "" };
+// Config pública (whatsappNumber + QR de pago, editable desde admin.html)
+let APP_CONFIG = { whatsappNumber: "", paymentQrUrl: "" };
 
 async function loadConfig() {
   try {
     const doc = await db.collection('config').doc('public').get();
     APP_CONFIG.whatsappNumber = (doc.exists && doc.get('whatsappNumber')) || '';
+    APP_CONFIG.paymentQrUrl   = (doc.exists && doc.get('paymentQrUrl')) || '';
     console.log('[config]', APP_CONFIG);
   } catch (e) {
     console.warn('[config] no se pudo cargar:', e);
@@ -222,17 +223,34 @@ function buildCheckoutWAMessage({ serviceName, total, contact, formEntries } = {
   return parts.filter(Boolean).join('\n');
 }
 
+// Modal de checkout: muestra el QR de pago (si está configurado) y deja la continuación
+// a WhatsApp como un clic directo del usuario — evita el bloqueo de pop-ups de los
+// navegadores ante un window.open() disparado después de un await.
 function showWhatsAppCheckout(summary) {
   const link = buildWhatsAppLink(buildCheckoutWAMessage(summary));
-  const panel = document.getElementById('pay-wa');
-  const cta = document.getElementById('pay-wa-link');
+
+  const modal   = document.getElementById('pay-modal');
+  const cta     = document.getElementById('pay-modal-wa-link');
+  const qrWrap  = document.getElementById('pay-modal-qr-wrap');
+  const qrImg   = document.getElementById('pay-modal-qr-img');
+
   if (cta) { cta.href = link; cta.target = '_blank'; cta.rel = 'noopener'; }
-  if (panel) {
-    panel.classList.remove('hidden');
-    panel.style.display = 'block';
-    setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+
+  if (qrImg && qrWrap) {
+    if (APP_CONFIG.paymentQrUrl) {
+      qrImg.src = APP_CONFIG.paymentQrUrl;
+      qrWrap.classList.remove('hidden');
+    } else {
+      qrWrap.classList.add('hidden');
+    }
   }
-  window.open(link, '_blank');
+
+  if (modal && typeof modal.showModal === 'function') {
+    modal.showModal();
+  } else if (cta) {
+    // Fallback sin <dialog> soportado: abre directo.
+    window.open(link, '_blank');
+  }
 }
 
 function setFabWhatsApp(orderOrNull) {
@@ -1395,6 +1413,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Cierre del modal
   document.getElementById('about-close')?.addEventListener('click', () => {
     document.getElementById('about-modal')?.close();
+  });
+
+  // Modal de checkout WhatsApp (QR + continuar)
+  const payModal = document.getElementById('pay-modal');
+  document.getElementById('pay-modal-close')?.addEventListener('click', () => payModal?.close());
+  payModal?.addEventListener('click', (e) => {
+    const article = payModal.querySelector('article');
+    if (!article) return;
+    const r = article.getBoundingClientRect();
+    const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    if (!inside) payModal.close('backdrop');
+  });
+  // Cerrar el modal al continuar a WhatsApp (el enlace ya abrió su propia pestaña)
+  document.getElementById('pay-modal-wa-link')?.addEventListener('click', () => {
+    setTimeout(() => payModal?.close(), 150);
   });
 
   /* =====================

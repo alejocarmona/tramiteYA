@@ -84,6 +84,15 @@
       <p class="help" style="margin-bottom:8px;">Usa el mismo ID de orden de arriba para marcar el pago como recibido tras cerrar la venta por WhatsApp.</p>
       <button class="btn" id="btn-confirm-payment" style="background:#16a34a;" disabled>Marcar pago como recibido</button>
       <div id="result-confirm" class="result hidden"></div>
+
+      <div class="divider"></div>
+
+      <h2>QR de pago (checkout)</h2>
+      <p class="help" style="margin-bottom:8px;">Se muestra a los clientes justo antes de enviarlos a WhatsApp. Sube el QR de cobro de tu banco (Bancolombia, Nequi, etc.).</p>
+      <img id="qr-preview" class="hidden" alt="QR de pago actual" style="width:140px;height:140px;border-radius:8px;border:1px solid #334155;display:block;margin:8px 0;object-fit:contain;background:#fff;"/>
+      <input type="file" id="qr-file" accept="image/*"/>
+      <button class="btn" id="btn-qr-upload" style="background:#2563eb;" disabled>Actualizar QR de pago</button>
+      <div id="result-qr" class="result hidden"></div>
     </div>
   </div>
 
@@ -277,6 +286,52 @@ $btnConfirm.onclick = async () => {
   } finally {
     $btnConfirm.textContent = 'Marcar pago como recibido';
     updateConfirmBtn();
+  }
+};
+
+// --- QR de pago ---
+const $qrPreview = document.getElementById('qr-preview');
+const $qrFile = document.getElementById('qr-file');
+const $btnQrUpload = document.getElementById('btn-qr-upload');
+const $resultQr = document.getElementById('result-qr');
+
+let selectedQrFile = null;
+
+db.collection('config').doc('public').get().then((doc) => {
+  const url = doc.exists ? doc.get('paymentQrUrl') : null;
+  if (url) { $qrPreview.src = url; $qrPreview.classList.remove('hidden'); }
+}).catch(() => {});
+
+$qrFile.onchange = () => {
+  selectedQrFile = $qrFile.files[0] || null;
+  $btnQrUpload.disabled = !selectedQrFile;
+};
+
+$btnQrUpload.onclick = async () => {
+  $btnQrUpload.disabled = true;
+  $btnQrUpload.textContent = 'Subiendo...';
+  $resultQr.className = 'result hidden';
+
+  try {
+    const fileRef = storage.ref('payment-qr/qr.png');
+    await fileRef.put(selectedQrFile, { contentType: selectedQrFile.type || 'image/png' });
+    const url = await fileRef.getDownloadURL();
+
+    await db.collection('config').doc('public').set({ paymentQrUrl: url }, { merge: true });
+
+    $qrPreview.src = url;
+    $qrPreview.classList.remove('hidden');
+    $resultQr.textContent = 'QR de pago actualizado.';
+    $resultQr.className = 'result ok';
+
+    $qrFile.value = '';
+    selectedQrFile = null;
+  } catch (e) {
+    $resultQr.textContent = `Error: ${e.message}`;
+    $resultQr.className = 'result err';
+  } finally {
+    $btnQrUpload.textContent = 'Actualizar QR de pago';
+    $btnQrUpload.disabled = !selectedQrFile;
   }
 };
 

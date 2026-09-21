@@ -6,10 +6,11 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.email == 'the.piece.maker@gmail.com';
     }
 
-    // Lectura pública SOLO del doc config/public
+    // Lectura pública SOLO del doc config/public. Escritura: solo admin, y solo ese doc
+    // (whatsappNumber, paymentQrUrl, etc. — el panel admin lo actualiza).
     match /config/{docId} {
       allow read: if docId == "public";
-      allow write: if false;
+      allow write: if docId == "public" && isAdmin();
     }
 
     // Catálogo visible públicamente (solo lectura). Escritura: solo admin (panel).
