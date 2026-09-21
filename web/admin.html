@@ -66,15 +66,12 @@
       <label for="orderId">ID de la orden</label>
       <input type="text" id="orderId" placeholder="Ej: j4lLL2USdlDWBHXWsTaG"/>
 
-      <label for="file">Certificado (PDF u otro archivo)</label>
-      <input type="file" id="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"/>
-      <div id="file-info" class="file-info"></div>
-
-      <button class="btn btn-primary" id="btn-upload" disabled>Subir certificado</button>
-
+      <h2 style="margin-top:20px;">Entregar certificado</h2>
+      <p class="help" style="margin-bottom:8px;">Sin almacenamiento en la nube (Firebase Storage exige plan pago), el archivo se envía directo por WhatsApp — aquí solo marcas la orden como entregada y abres el chat con el cliente para adjuntarlo.</p>
+      <button class="btn btn-primary" id="btn-deliver" disabled>Marcar como entregado</button>
       <div id="result" class="result hidden"></div>
       <div id="notify-links" class="notify-links hidden">
-        <a id="notify-wa" class="btn notify-wa" target="_blank" rel="noopener">📲 Avisar por WhatsApp</a>
+        <a id="notify-wa" class="btn notify-wa" target="_blank" rel="noopener">📲 Abrir WhatsApp y adjuntar archivo</a>
         <a id="notify-mail" class="btn notify-mail">✉️ Avisar por correo</a>
       </div>
 
@@ -88,7 +85,7 @@
       <div class="divider"></div>
 
       <h2>QR de pago (checkout)</h2>
-      <p class="help" style="margin-bottom:8px;">Se muestra a los clientes justo antes de enviarlos a WhatsApp. Sube el QR de cobro de tu banco (Bancolombia, Nequi, etc.).</p>
+      <p class="help" style="margin-bottom:8px;">Se muestra a los clientes justo antes de enviarlos a WhatsApp. Sube el QR de cobro de tu banco (Bancolombia, Nequi, etc.) — máx. 500 KB, se guarda directo en la base de datos (sin Storage).</p>
       <img id="qr-preview" class="hidden" alt="QR de pago actual" style="width:140px;height:140px;border-radius:8px;border:1px solid #334155;display:block;margin:8px 0;object-fit:contain;background:#fff;"/>
       <input type="file" id="qr-file" accept="image/*"/>
       <button class="btn" id="btn-qr-upload" style="background:#2563eb;" disabled>Actualizar QR de pago</button>
@@ -99,7 +96,6 @@
   <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
   <script defer>
 // Un <script defer> SIN src ignora el atributo defer (se ejecuta de inmediato durante
 // el parseo) — se envuelve en DOMContentLoaded para garantizar que los <script defer src="...">
@@ -116,7 +112,6 @@ const FIREBASE_CONFIG = {
 if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 const db = firebase.firestore();
-const storage = firebase.storage();
 
 const $loginView = document.getElementById('login-view');
 const $adminView = document.getElementById('admin-view');
@@ -159,27 +154,23 @@ auth.onAuthStateChanged((user) => {
   }
 });
 
-// --- Panel admin ---
+function normalizePhone(raw) {
+  const digits = String(raw || '').replace(/\D/g, '');
+  return digits.startsWith('57') ? digits : `57${digits}`;
+}
+
+// --- Panel admin: entregar certificado (sin Storage — el archivo va por WhatsApp) ---
 const $orderId = document.getElementById('orderId');
-const $file = document.getElementById('file');
-const $fileInfo = document.getElementById('file-info');
-const $btn = document.getElementById('btn-upload');
+const $btnDeliver = document.getElementById('btn-deliver');
 const $result = document.getElementById('result');
 const $notifyLinks = document.getElementById('notify-links');
 const $notifyWa = document.getElementById('notify-wa');
 const $notifyMail = document.getElementById('notify-mail');
 
-let selectedFile = null;
-
-$file.onchange = () => {
-  selectedFile = $file.files[0] || null;
-  $fileInfo.textContent = selectedFile ? `${selectedFile.name} (${(selectedFile.size / 1024).toFixed(1)} KB)` : '';
-  updateBtn();
-};
 $orderId.oninput = () => { updateBtn(); updateConfirmBtn(); };
 
 function updateBtn() {
-  $btn.disabled = !($orderId.value.trim() && selectedFile);
+  $btnDeliver.disabled = !$orderId.value.trim();
 }
 
 function showResult(text, type) {
@@ -187,15 +178,10 @@ function showResult(text, type) {
   $result.className = `result ${type}`;
 }
 
-function normalizePhone(raw) {
-  const digits = String(raw || '').replace(/\D/g, '');
-  return digits.startsWith('57') ? digits : `57${digits}`;
-}
-
-$btn.onclick = async () => {
+$btnDeliver.onclick = async () => {
   const orderId = $orderId.value.trim();
-  $btn.disabled = true;
-  $btn.textContent = 'Subiendo...';
+  $btnDeliver.disabled = true;
+  $btnDeliver.textContent = 'Marcando...';
   $result.className = 'result hidden';
   $notifyLinks.classList.add('hidden');
 
@@ -205,26 +191,18 @@ $btn.onclick = async () => {
     if (!orderSnap.exists) throw new Error('Orden no encontrada');
     const order = orderSnap.data();
 
-    const safeName = (selectedFile.name || 'certificado.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
-    const path = `certificates/${orderId}/${safeName}`;
-    const fileRef = storage.ref(path);
-    await fileRef.put(selectedFile, { contentType: selectedFile.type || 'application/pdf' });
-    const fileUrl = await fileRef.getDownloadURL();
-
     const now = new Date().toISOString();
     await orderRef.set({
       status: 'delivered',
-      delivery: { channel: 'download', fileUrl },
+      delivery: { channel: 'whatsapp', fileUrl: null },
       audit: { ...(order.audit || {}), updated_at: now, actor: 'operator' },
     }, { merge: true });
 
-    showResult(`Certificado subido exitosamente.\nOrden: ${orderId}\nURL: ${fileUrl}`, 'ok');
+    showResult(`Orden ${orderId} marcada como entregada.\nAdjunta el archivo directo en el chat de WhatsApp con el cliente.`, 'ok');
 
-    // Notificación al cliente: sin Cloud Functions no hay envío automático de correo,
-    // se deja el enlace listo para que el operador lo envíe por WhatsApp o correo.
     const phone = order.contact?.phone;
     const email = order.contact?.email;
-    const waMsg = `Hola, tu certificado de TrámiteYA ya está listo.\nOrden: ${orderId}\nDescárgalo aquí: ${fileUrl}`;
+    const waMsg = `Hola, tu certificado de TrámiteYA ya está listo. Te lo adjunto en este chat.\nOrden: ${orderId}`;
     if (phone) {
       $notifyWa.href = `https://wa.me/${normalizePhone(phone)}?${new URLSearchParams({ text: waMsg })}`;
       $notifyWa.classList.remove('hidden');
@@ -233,7 +211,7 @@ $btn.onclick = async () => {
     }
     if (email) {
       const subject = encodeURIComponent(`Tu certificado de TrámiteYA - Orden ${orderId}`);
-      const body = encodeURIComponent(`Hola,\n\nAquí tienes tu certificado:\n${fileUrl}\n\nGracias por usar TrámiteYA.`);
+      const body = encodeURIComponent(`Hola,\n\nTu certificado ya está listo. Te lo enviamos por WhatsApp — si prefieres, respóndenos a este correo y te lo adjuntamos aquí.\n\nGracias por usar TrámiteYA.`);
       $notifyMail.href = `mailto:${email}?subject=${subject}&body=${body}`;
       $notifyMail.classList.remove('hidden');
     } else {
@@ -242,16 +220,13 @@ $btn.onclick = async () => {
     $notifyLinks.classList.remove('hidden');
 
     $orderId.value = '';
-    $file.value = '';
-    $fileInfo.textContent = '';
-    selectedFile = null;
     updateBtn();
     updateConfirmBtn();
 
   } catch (e) {
     showResult(`Error: ${e.message}`, 'err');
   } finally {
-    $btn.textContent = 'Subir certificado';
+    $btnDeliver.textContent = 'Marcar como entregado';
     updateBtn();
   }
 };
@@ -293,7 +268,9 @@ $btnConfirm.onclick = async () => {
   }
 };
 
-// --- QR de pago ---
+// --- QR de pago: se guarda como data URI directo en Firestore (sin Storage) ---
+const QR_MAX_BYTES = 500 * 1024; // deja margen bajo el límite de 1 MiB por doc de Firestore
+
 const $qrPreview = document.getElementById('qr-preview');
 const $qrFile = document.getElementById('qr-file');
 const $btnQrUpload = document.getElementById('btn-qr-upload');
@@ -306,24 +283,38 @@ db.collection('config').doc('public').get().then((doc) => {
   if (url) { $qrPreview.src = url; $qrPreview.classList.remove('hidden'); }
 }).catch(() => {});
 
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.readAsDataURL(file);
+  });
+}
+
 $qrFile.onchange = () => {
-  selectedQrFile = $qrFile.files[0] || null;
+  const f = $qrFile.files[0] || null;
+  $resultQr.className = 'result hidden';
+  if (f && f.size > QR_MAX_BYTES) {
+    selectedQrFile = null;
+    $resultQr.textContent = `La imagen pesa ${(f.size / 1024).toFixed(0)} KB — máximo 500 KB. Exporta el QR en menor resolución.`;
+    $resultQr.className = 'result err';
+  } else {
+    selectedQrFile = f;
+  }
   $btnQrUpload.disabled = !selectedQrFile;
 };
 
 $btnQrUpload.onclick = async () => {
   $btnQrUpload.disabled = true;
-  $btnQrUpload.textContent = 'Subiendo...';
+  $btnQrUpload.textContent = 'Guardando...';
   $resultQr.className = 'result hidden';
 
   try {
-    const fileRef = storage.ref('payment-qr/qr.png');
-    await fileRef.put(selectedQrFile, { contentType: selectedQrFile.type || 'image/png' });
-    const url = await fileRef.getDownloadURL();
+    const dataUrl = await fileToDataUrl(selectedQrFile);
+    await db.collection('config').doc('public').set({ paymentQrUrl: dataUrl }, { merge: true });
 
-    await db.collection('config').doc('public').set({ paymentQrUrl: url }, { merge: true });
-
-    $qrPreview.src = url;
+    $qrPreview.src = dataUrl;
     $qrPreview.classList.remove('hidden');
     $resultQr.textContent = 'QR de pago actualizado.';
     $resultQr.className = 'result ok';
