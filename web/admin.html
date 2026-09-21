@@ -101,6 +101,10 @@
   <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
   <script defer>
+// Un <script defer> SIN src ignora el atributo defer (se ejecuta de inmediato durante
+// el parseo) — se envuelve en DOMContentLoaded para garantizar que los <script defer src="...">
+// del SDK de Firebase (arriba) ya se ejecutaron y `firebase` existe.
+document.addEventListener('DOMContentLoaded', () => {
 const FIREBASE_CONFIG = {
   projectId: "apptramiteya",
   appId: "1:116926764904:web:8358c14f77e060f3bee8dd",
@@ -338,6 +342,7 @@ $btnQrUpload.onclick = async () => {
 // Init
 updateBtn();
 updateConfirmBtn();
+}); // Cierre de DOMContentLoaded
   </script>
 </body>
 </html>
