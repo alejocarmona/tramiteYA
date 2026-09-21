@@ -199,18 +199,24 @@ function buildFormEntries(formData, fields) {
 
 // Mensaje de checkout WhatsApp: incluye todos los datos capturados en el formulario
 // (contacto + campos propios del trámite) para que el asesor no tenga que pedirlos de nuevo.
-function buildCheckoutWAMessage({ orderId, serviceName, total, contact, formEntries } = {}) {
+// El id interno de la orden no se muestra (no aporta al cliente); el asesor identifica
+// el pedido por nombre/teléfono en el panel admin.
+function buildCheckoutWAMessage({ serviceName, total, contact, formEntries } = {}) {
   const parts = [
     'Hola, quiero completar el pago de mi pedido en TrámiteYA.',
-    orderId ? `Orden: ${orderId}` : '',
     serviceName ? `Trámite: ${serviceName}` : '',
   ];
-  if (contact?.name)  parts.push(`Nombre: ${contact.name}`);
-  if (contact?.email) parts.push(`Correo: ${contact.email}`);
-  if (contact?.phone) parts.push(`Celular: ${contact.phone}`);
   if (Array.isArray(formEntries) && formEntries.length) {
     parts.push('Datos del trámite:');
     formEntries.forEach(([label, value]) => parts.push(`- ${label}: ${value}`));
+  }
+  const contactLines = [];
+  if (contact?.name)  contactLines.push(`- Nombre: ${contact.name}`);
+  if (contact?.email) contactLines.push(`- Correo: ${contact.email}`);
+  if (contact?.phone) contactLines.push(`- Celular: ${contact.phone}`);
+  if (contactLines.length) {
+    parts.push('Datos de contacto:');
+    parts.push(...contactLines);
   }
   if (total !== undefined && total !== null && total > 0) parts.push(`Total a pagar: ${pesos(total)}`);
   return parts.filter(Boolean).join('\n');
@@ -580,6 +586,11 @@ function setBtnLoading(btn, loading, textLoading = "Creando…", textIdle = "Cre
 function disableFormInputs(disabled) {
   document.querySelectorAll('#form input, #form select').forEach(el => { el.disabled = disabled; });
 }
+// "Crear orden" solo se habilita cuando el formulario (contacto + campos del trámite) es válido.
+function updateCreateBtnState() {
+  if (!S.btnCreate || !S.formEl) return;
+  S.btnCreate.disabled = !S.formEl.checkValidity();
+}
 function lockHeader(disabled) {
   ['#btn-reload', '#btn-history', '#btn-clear-history'].forEach(sel => {
     const btn = document.querySelector(sel);
@@ -753,7 +764,7 @@ async function openForm(id) {
   currentOrder = null;
 
   lockHeader(false); lockNavigation(false); disableFormInputs(false);
-  if (S.btnCreate) S.btnCreate.disabled = false;
+  updateCreateBtnState();
 
   dedupeContactBlock();
   show(S.form);
@@ -1347,6 +1358,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     __FORM_BASE_HTML = f.innerHTML; // snapshot base
     const obs = new MutationObserver(() => ensureSingleContactBlock());
     obs.observe(f, { childList: true, subtree: true });
+    // Delegado: cubre también los campos dinámicos insertados por openForm()
+    f.addEventListener('input', updateCreateBtnState);
+    f.addEventListener('change', updateCreateBtnState);
   }
 
   // Bottom nav handlers
