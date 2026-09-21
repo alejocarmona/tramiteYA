@@ -229,16 +229,19 @@ function buildCheckoutWAMessage({ serviceName, total, contact, formEntries } = {
 function showWhatsAppCheckout(summary) {
   const link = buildWhatsAppLink(buildCheckoutWAMessage(summary));
 
-  const modal   = document.getElementById('pay-modal');
-  const cta     = document.getElementById('pay-modal-wa-link');
-  const qrWrap  = document.getElementById('pay-modal-qr-wrap');
-  const qrImg   = document.getElementById('pay-modal-qr-img');
+  const modal    = document.getElementById('pay-modal');
+  const cta      = document.getElementById('pay-modal-wa-link');
+  const qrWrap   = document.getElementById('pay-modal-qr-wrap');
+  const qrImg    = document.getElementById('pay-modal-qr-img');
+  const qrDownload = document.getElementById('pay-modal-qr-download');
 
   if (cta) { cta.href = link; cta.target = '_blank'; cta.rel = 'noopener'; }
 
   if (qrImg && qrWrap) {
     if (APP_CONFIG.paymentQrUrl) {
       qrImg.src = APP_CONFIG.paymentQrUrl;
+      // data: URI → el navegador puede descargarlo directo, sin ir a la red.
+      if (qrDownload) qrDownload.href = APP_CONFIG.paymentQrUrl;
       qrWrap.classList.remove('hidden');
     } else {
       qrWrap.classList.add('hidden');

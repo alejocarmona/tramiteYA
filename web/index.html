@@ -572,11 +572,12 @@ dialog#about-modal .muted { color: #64748b; font-size: 12px; }
 dialog#pay-modal { border: none; padding: 0; border-radius: 16px; max-width: 420px; width: calc(100% - 32px); }
 dialog#pay-modal::backdrop { background: rgba(0,0,0,.5); }
 dialog#pay-modal article { padding: 18px 18px 20px; background: #fff; color: #0b1221; border-radius: 16px; text-align: center; }
-dialog#pay-modal header { display:flex; justify-content: flex-end; margin-bottom: -8px; }
-dialog#pay-modal h3 { font-size: 1.1rem; margin: 4px 0 8px; }
+dialog#pay-modal header { display:flex; justify-content: flex-end; margin-bottom: 4px; }
+dialog#pay-modal h3 { font-size: 1.1rem; margin: 10px 0 8px; }
 dialog#pay-modal .muted { color: #64748b; font-size: 0.85rem; margin: 0 0 14px; }
 dialog#pay-modal img#pay-modal-qr-img { width: 220px; max-width: 100%; height: auto; border-radius: 12px; border: 1px solid #e2e8f0; margin: 0 auto 6px; display: block; }
-dialog#pay-modal .qr-caption { font-size: 0.8rem; color: #64748b; margin-bottom: 14px; }
+dialog#pay-modal .qr-caption { font-size: 0.8rem; color: #64748b; margin-bottom: 6px; }
+dialog#pay-modal a#pay-modal-qr-download { display:inline-block; font-size: 0.85rem; color: #2563eb; text-decoration: underline; margin-bottom: 14px; }
 dialog#pay-modal a#pay-modal-wa-link { display:block; background:#16a34a; color:#fff; padding:12px 16px; border-radius:10px; font-weight:700; text-decoration:none; }
 #about-close { 
   appearance:none; 
@@ -859,7 +860,7 @@ dialog#pay-modal a#pay-modal-wa-link { display:block; background:#16a34a; color:
 
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-<script defer src="./main.js?v=30"></script>
+<script defer src="./main.js?v=31"></script>
 <script>
   // Registrar Service Worker
   if ('serviceWorker' in navigator) {
@@ -924,11 +925,12 @@ document.addEventListener('DOMContentLoaded', () => {
     <header>
       <button id="pay-modal-close" aria-label="Cerrar">✕</button>
     </header>
-    <h3>📲 Tu pedido quedó registrado</h3>
+    <h3>📲 Tu pedido ya quedó registrado</h3>
     <p class="muted">Te vamos a llevar a nuestra línea de WhatsApp para darte las opciones de pago. Si prefieres adelantarte, puedes pagar ya escaneando este QR:</p>
     <div id="pay-modal-qr-wrap" class="hidden">
       <img id="pay-modal-qr-img" alt="QR para pagar" />
       <p class="qr-caption">Escanea con Bancolombia, Nequi o la app de tu banco</p>
+      <a id="pay-modal-qr-download" download="qr-pago-tramiteya.png">⬇️ Descargar QR (si pagas desde este mismo celular)</a>
     </div>
     <a id="pay-modal-wa-link" href="#" target="_blank" rel="noopener">📲 Continuar a WhatsApp</a>
   </article>
